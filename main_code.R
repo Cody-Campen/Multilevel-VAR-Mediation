@@ -13,8 +13,9 @@ library(dplyr)
 source("postcalc.R")
 source("simulate_data.R")
 
-the_seed = 1913
-informative_priors = F
+the_seed = 1000
+
+#Dataset generation variables
 nsubs = 100
 ntimes = 30
 percent_missing = 0
@@ -48,9 +49,12 @@ direct_effect = matrix(c(0,  # Y intercept
                        nrow = n_treatments + 1, ncol = n_outcomes, byrow = T)
 parameter_matrix_covariance = diag(n_parameters)/100
 Y_covariance = diag(n_outcomes)/100
-# ---- Structure dataset ----
 
-# For our dataset for...
+# JAGS model variables
+informative_priors = F
+n_chains = 2
+
+# ---- Structure dataset ----
 data_info = simulate_data(nsubs = nsubs, ntimes = ntimes, percent_missing = 0,
                           n_treatments = n_treatments, n_outcomes = n_outcomes,
                           treatment_effect_matrix = treatment_effect_matrix,
@@ -58,8 +62,8 @@ data_info = simulate_data(nsubs = nsubs, ntimes = ntimes, percent_missing = 0,
                           direct_effect = direct_effect,
                           parameter_matrix_covariance = parameter_matrix_covariance,
                           Y_covariance = Y_covariance)
-dataset = data_info$dataset
 
+dataset = data_info$dataset
 indirect_effect = data_info$natural_indirect_effect
 parameter_matrix = data_info$parameter_matrix[1:n_parameters,]
 
@@ -105,12 +109,6 @@ if(informative_priors){
   direct_effect_precision = diag(n_treatments+1)
 }
 
-
-
-#checking plots 
-plot(Y, X[,2])
-plot(Y, t(parameter_matrix[3,]))
-
 jags_data = list(X = X,
                  parameter_matrix = parameter_matrix,
                  Y = Y,
@@ -127,19 +125,49 @@ jags_data = list(X = X,
                  direct_effect_precision = direct_effect_precision, 
                  parameter_rate_matrix = parameter_rate_matrix)
 
-initial_values = list(X_fixed_effect = treatment_effect_matrix,
-                      M_fixed_effect = mediator_effect_matrix,
-                      indirect_effect = indirect_effect,
-                      direct_effect = direct_effect)
-# this should be adistribution
-initial_values_chain_1 = list(.RNG.name = "base::Wichmann-Hill", .RNG.seed = the_seed)
-initial_values_chain_2 = list(.RNG.name = "base::Wichmann-Hill", .RNG.seed = the_seed+500)
+# this should be a distribution
+create_inits = function(n_chains){
+  initial_values_list = NULL
+  
+  for(this_chain in 1:n_chains){
+    # creating storage objects for our initial values
+    X_fixed_effect = matrix(NA, nrow = n_parameters, ncol = n_treatments+1)
+    M_fixed_effect = matrix(NA, nrow = n_outcomes, ncol = n_parameters)
+    direct_effect = matrix(NA, nrow = n_outcomes, ncol = n_treatments+1)
+    
+    # sampling the initial values
+    for(this_parameter in 1:n_parameters){
+      X_fixed_effect[this_parameter,] = mvrnorm(mu = X_fixed_effect_mean[this_parameter, ], Sigma = X_fixed_effect_precision)
+    }
+    parameter_matrix.precision = rWishart(n = 1, df = n_parameters+3, Sigma = solve(parameter_rate_matrix))
+    for(this_outcome in 1:n_outcomes){
+      M_fixed_effect[this_outcome, ] = mvrnorm(mu = M_fixed_effect_mean[this_outcome, ], Sigma = M_fixed_effect_precision)
+      direct_effect[this_outcome, ] = mvrnorm(mu = direct_effect_mean[this_outcome, ], Sigma = direct_effect_precision)
+    }
+    Y.precision = rgamma(n = 1, shape = .1, rate = .1)
+    
+    # Organizing the samples in a list to pass onto the larger list of initial values
+    list_to_add = list(X_fixed_effect = X_fixed_effect,
+                       M_fixed_effect = M_fixed_effect,
+                       direct_effect = direct_effect,
+                       .RNG.name = "base::Mersenne-Twister",
+                       .RNG.seed = 1000*this_chain)
+    
+    initial_values_list[[this_chain]] = list_to_add
+  }
+  
+ return(initial_values_list)
+}
 
-jagsModel = jags.model(file = "jags_model.R", data = jags_data, inits=list(inits1,inits2), n.chains = 2, n.adapt = 4000) #n.adapt = 4000
+jagsModel = jags.model(file = "jags_model.R", 
+                       data = jags_data, 
+                       inits = create_inits(n_chains), 
+                       n.chains = 2, 
+                       n.adapt = 4000) #n.adapt = 4000
+
 update(jagsModel, n.iter = 2500)
 
 # warm up/burn in period 2500
-# thinning
 
 parameterlist = c("X_fixed_effect", "M_fixed_effect", "indirect_effect", "direct_effect")
 
@@ -152,14 +180,3 @@ plot(codaSamples[[1]])
 
 source('postcalc.R')
 zcalc(simple_chain)
-
-# the dungeon
-library(BayesianMediationA)
-test = bma.bx.cy(pred = X[,-1],m = t(parameter_matrix),y =  Y, n.iter=1000,n.burnin = 1)
-summary(test)
-
-for(this_column in 1:n_mediators){
-  for(this_row in 1:n_mediators){
-    print((this_column-1)*n_mediators+this_row+n_mediators)
-  }
-}

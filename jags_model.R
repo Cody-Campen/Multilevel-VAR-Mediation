@@ -5,7 +5,7 @@
 #' person-specific VAR parameters, like a person's strength of autoregression or coupling between variables.
 #' 
 #' Author: Cody A. Campen
-#' Last updated: 11/5/2025
+#' Last updated: 11/9/2025
 #' For details see:
 #' Insert our citation in apa format
 #'   with a hanging indent
@@ -86,9 +86,9 @@ model {
 
     for(this_var in 1:(n_mediators-1)){
       for(other_var in (this_var+1):n_mediators){
-        this_covariance = M_process_noise[this_sub, this_var] * M_process_noise[this_sub, other_var] * M_correlation_matrix[this_sub,this_var,other_var]
-        M_process_noise_covariance[this_sub, this_var, other_var] = this_covariance
-        M_process_noise_covariance[this_sub, other_var, this_var] = this_covariance
+        this_covariance[this_sub, this_var, other_var] = M_process_noise[this_sub, other_var] * M_process_noise[this_sub, other_var] * M_correlation_matrix[this_sub, other_var, this_var]
+        M_process_noise_covariance[this_sub, this_var, other_var] = this_covariance[this_sub, this_var, other_var]
+        M_process_noise_covariance[this_sub, other_var, this_var] = this_covariance[this_sub, this_var, other_var]
       }
     }
   }
