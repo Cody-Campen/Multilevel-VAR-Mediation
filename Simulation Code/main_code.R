@@ -125,7 +125,8 @@ jags_data = list(X = X,
                  M_fixed_effect_precision = M_fixed_effect_precision,
                  direct_effect_mean = direct_effect_mean,
                  direct_effect_precision = direct_effect_precision, 
-                 parameter_rate_matrix = parameter_rate_matrix)
+                 parameter_rate_matrix = parameter_rate_matrix,
+                 n_mediators_squared = n_mediators^2) # because JAGS doesn't recognize n_mediators^2 as an integer when used in a sequence operator
 
 initial_values = list(X_fixed_effect = treatment_effect_matrix,
                       M_fixed_effect = mediator_effect_matrix,

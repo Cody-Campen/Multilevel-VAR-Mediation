@@ -68,8 +68,8 @@ model {
     # # Now we're going to begin on creating the process noise covariance matrix by first
     # # making the process noise, the correlations, then combining them into the covariance matrix.
 
-    # Then feed the process noises into their own object 
-    M_process_noise[this_sub, 1:n_mediators] = parameter_matrix[(n_mediators + (n_mediators*n_mediators) + 1):(2*n_mediators + (n_mediators*n_mediators)), this_sub]
+    # Then feed the process noises into their own object
+    M_process_noise[this_sub, 1:n_mediators] = parameter_matrix[(n_mediators + n_mediators_squared + 1):(2*n_mediators + n_mediators_squared), this_sub]
 
     # Then feed the correlations between different mediators into its own object.
     # Note that this requires multiple mediators and should be removed for univariate mediation models
@@ -80,7 +80,7 @@ model {
         # at the value 2*n_mediators+n_mediators^2, which is where the correlations should
         # begin. In short, it takes the correlations from parameter matrix and reshapes it
         # into matrix of correlations.
-        M_correlation_matrix[this_sub,i,j] = parameter_matrix[2*n_mediators + (n_mediators*n_mediators) + (j-1)*n_mediators - (j*j - j)/2 + (i-j), this_sub]
+        M_correlation_matrix[this_sub,i,j] = parameter_matrix[2*n_mediators + n_mediators_squared + (j-1)*n_mediators - (j*j - j)/2 + (i-j), this_sub]
       }
     }
 
