@@ -15,16 +15,16 @@ model{
     # depends on how far I was from my baseline, (y_{i,t-1} - Phi_{0,i}) at time t.
     
     
-    # ---- y under missingness ----
-    # This part uses the values implied by the fitted model to impute or "fill in" missing values
-    for(timePoint in Tmiss[pp,1:nmiss[pp]]){
-      mus[pp,timePoint,1:D] <- intercept[pp,1:D] + AR[pp,1:D,1:D] %*% (Y[pp, timePoint-1,1:D] - intercept[pp,1:D])
-      
-      # NB: Here we use 2 univariate normal distributions for y1-yD
-      for (dd in 1:D){
-        Y[pp, timePoint, dd] ~ dnorm(mus[pp, timePoint, dd], pow(sd_noise[dd],-2))
-      }
-    }
+    # # ---- y under missingness ----
+    # # This part uses the values implied by the fitted model to impute or "fill in" missing values
+    # for(timePoint in Tmiss[pp,1:nmiss[pp]]){
+    #   mus[pp,timePoint,1:D] <- intercept[pp,1:D] + AR[pp,1:D,1:D] %*% (Y[pp, timePoint-1,1:D] - intercept[pp,1:D])
+    #   
+    #   # NB: Here we use 2 univariate normal distributions for y1-yD
+    #   for (dd in 1:D){
+    #     Y[pp, timePoint, dd] ~ dnorm(mus[pp, timePoint, dd], pow(sd_noise[dd],-2))
+    #   }
+    # }
     
     # ---- y without missingness ----
     # This part pertains to data points that are NOT missing

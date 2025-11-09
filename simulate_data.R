@@ -2,8 +2,8 @@
 #' 
 #' This function simulates an example dataset for mediation through person-specific VAR parameters.
 #' 
-#' @param nsubs The number of subjects.
-#' @param ntimes The number of time points per subject.
+#' @param n_people The number of people in the dataset. 
+#' @param n_times The number of time points per person.
 #' @param nmediators The number of time-series mediators.
 #' @param percent_missing The percentage of observations missing completely at random for each subject.
 #' @param n_treatments The number of treatments for the model.
@@ -21,8 +21,8 @@
 #' }
 #' 
 #' @export
-simulate_data = function(nsubs = 100,
-                         ntimes = 30,
+simulate_data = function(n_people = 100,
+                         n_times = 30,
                          percent_missing = 0,
                          n_treatments = 2,
                          n_mediators = 2,
@@ -66,13 +66,13 @@ simulate_data = function(nsubs = 100,
   
   # ---- Generating the dataset ----
   
-  id = rep(1:nsubs, each = ntimes)
-  time = 1:ntimes
+  id = rep(1:n_people, each = n_times)
+  time = 1:n_times
   n_parameters = dim(treatment_effect_matrix)[1]
   
-  X = mvrnorm(n = nsubs, mu = rep(0, times = n_treatments), Sigma = diag(n_treatments))
-  X = cbind(rep(1, nsubs), X) # including the 1s to model the intercepts
-  parameter_matrix_error = t(mvrnorm(n = nsubs, mu = rep(0, times = n_parameters), Sigma = parameter_matrix_covariance))
+  X = mvrnorm(n = n_people, mu = rep(0, times = n_treatments), Sigma = diag(n_treatments))
+  X = cbind(rep(1, n_people), X) # including the 1s to model the intercepts
+  parameter_matrix_error = t(mvrnorm(n = n_people, mu = rep(0, times = n_parameters), Sigma = parameter_matrix_covariance))
     
   # First, define the between-level model, the effect of X on the person-specific parameters.
   parameter_matrix = treatment_effect_matrix %*% t(X) + parameter_matrix_error
@@ -83,15 +83,15 @@ simulate_data = function(nsubs = 100,
   m_intercepts = parameter_matrix[1:n_mediators,]
   
   m_transition_matrix = array(parameter_matrix[(n_mediators+1):(n_mediators^2 + n_mediators),], 
-                              dim = c(n_mediators, n_mediators, nsubs))
+                              dim = c(n_mediators, n_mediators, n_people))
   
   # and of course, check for stability
-  for(this_sub in 1:nsubs) {
-    eigen_values = eigen(m_transition_matrix[, , this_sub])$values
+  for(this_person in 1:n_people) {
+    eigen_values = eigen(m_transition_matrix[, , this_person])$values
     max_eigen_value = max(Mod(eigen_values))
     
     if(max_eigen_value >= .99) {
-      warning(paste("Participant", this_sub, "has unstable transition matrix. Max |eigenvalue| =", round(max_eigen_value, 3)))
+      warning(paste("Participant", this_person, "has unstable transition matrix. Max |eigenvalue| =", round(max_eigen_value, 3)))
     }
   }
   
@@ -100,38 +100,38 @@ simulate_data = function(nsubs = 100,
   m_standard_deviations = parameter_matrix[(n_mediators^2 + n_mediators + 1):(n_mediators^2 + 2*n_mediators),] |> exp()
   m_correlations = parameter_matrix[(n_mediators^2 + 2*n_mediators+1):dim(parameter_matrix)[1],] |> tanh()
   
-  m_noise_covariance = array(NA, dim = c(n_mediators, n_mediators, nsubs))
-  m_process_noise_matrix = array(NA, dim = c(ntimes, n_mediators, nsubs))
+  m_noise_covariance = array(NA, dim = c(n_mediators, n_mediators, n_people))
+  m_process_noise_matrix = array(NA, dim = c(n_times, n_mediators, n_people))
   
 ################################################################################
 ###### This next for loop can ONLY accommodate 2 mediators at the moment  ###### 
 ########### A change must be made to accommodate a different amount. ########### 
 ################################################################################
   off_diagonal_index = !diag(nrow(m_noise_covariance))  
-  for(this_sub in 1:nsubs){
-    diag(m_noise_covariance[ , , this_sub]) = m_standard_deviations[,this_sub]^2
-    m_noise_covariance[, , this_sub][off_diagonal_index] =  prod(m_standard_deviations[,this_sub]) * m_correlations[this_sub]
-    m_process_noise_matrix[, ,this_sub] = mvrnorm(n = ntimes, mu = rep(0, times = n_mediators), Sigma = m_noise_covariance[,,this_sub])
+  for(this_person in 1:n_people){
+    diag(m_noise_covariance[ , , this_person]) = m_standard_deviations[,this_person]^2
+    m_noise_covariance[, , this_person][off_diagonal_index] =  prod(m_standard_deviations[,this_person]) * m_correlations[this_person]
+    m_process_noise_matrix[, ,this_person] = mvrnorm(n = n_times, mu = rep(0, times = n_mediators), Sigma = m_noise_covariance[,,this_person])
   }
 
   
   # Third, create a storage objects for the mediator time series...
-  M = array(NA, dim = c(ntimes, n_mediators, nsubs)) # (timepoints x mediators x subjects)
+  M = array(NA, dim = c(n_times, n_mediators, n_people)) # (timepoints x mediators x subjects)
   
   # ...and set the initial values for each subject.
   M[1, , ] = m_intercepts + m_process_noise_matrix[1,,]
   
   # fourth, loop over timepoints to fill in participant's values for each their mediating time series
-  for(this_sub in 1:nsubs){
-    for(this_time in 2:ntimes){
-        M[this_time, ,this_sub] = m_intercepts[, this_sub] + 
-                          m_transition_matrix[, , this_sub] %*% (M[this_time - 1, ,this_sub] - m_intercepts[, this_sub]) + 
-                          m_process_noise_matrix[this_time, ,this_sub]
+  for(this_person in 1:n_people){
+    for(this_time in 2:n_times){
+        M[this_time, ,this_person] = m_intercepts[, this_person] + 
+                          m_transition_matrix[, , this_person] %*% (M[this_time - 1, ,this_person] - m_intercepts[, this_person]) + 
+                          m_process_noise_matrix[this_time, ,this_person]
     }
   }
   
   # Finally, let's convert these transition matrix values to the outcome.
-  Y_error = mvrnorm(n = nsubs, mu = rep(0, times = n_outcomes), Sigma = Y_covariance)
+  Y_error = mvrnorm(n = n_people, mu = rep(0, times = n_outcomes), Sigma = Y_covariance)
   # add intercepts to the parameter matrix
   Y = t(parameter_matrix) %*% mediator_effect_matrix + X %*% direct_effect + Y_error
 
@@ -140,23 +140,23 @@ simulate_data = function(nsubs = 100,
                        time = time)
   
   # Repeat X across each timepoint for long structure
-  X_df = apply(X[,-1], 2, function(x) rep(x, each = ntimes))
+  X_df = apply(X[,-1], 2, function(x) rep(x, each = n_times))
   colnames(X_df) = paste("X", 1:n_treatments, sep = "")
   dataset = cbind(dataset, X_df)
   
 
   # Permute M to harmonize with the dataset structure
-  M_df = matrix(aperm(M, c(1, 3, 2)), nrow = ntimes*nsubs, ncol = 2)
+  M_df = matrix(aperm(M, c(1, 3, 2)), nrow = n_times*n_people, ncol = 2)
   
   # Create the missingness indices for M
-  is_missing = as.logical(rbinom(nsubs*ntimes, 1, percent_missing))
+  is_missing = as.logical(rbinom(n_people*n_times, 1, percent_missing))
   M_df[which(is_missing),] = NA
   
   colnames(M_df) = paste("M", 1:n_mediators, sep ="")
   dataset = cbind(dataset, M_df)
   
   # Repeat Y across timepoints for long structure
-  Y_df = apply(Y, 2, function(y) rep(y, each = ntimes))
+  Y_df = apply(Y, 2, function(y) rep(y, each = n_times))
   colnames(Y_df) = paste("Y", 1:n_outcomes, sep = "")
   dataset = cbind(dataset, Y_df)
   

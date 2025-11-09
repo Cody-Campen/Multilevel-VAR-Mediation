@@ -15,9 +15,9 @@ source("simulate_data.R")
 
 the_seed = 1000
 
-#Dataset generation variables
-nsubs = 100
-ntimes = 30
+# Dataset generation variables
+n_people = 100
+n_times = 30
 percent_missing = 0
 n_treatments = 2
 n_parameters = 9
@@ -51,11 +51,11 @@ parameter_matrix_covariance = diag(n_parameters)/1
 Y_covariance = diag(n_outcomes)/1
 
 # JAGS model variables
-informative_priors = T
-n_chains = 2
+informative_priors = F  # T/F whether or not to use informative priors
+n_chains = 2            # the number of chains used for the MCMC
 
 # ---- Structure dataset ----
-data_info = simulate_data(nsubs = nsubs, ntimes = ntimes, percent_missing = 0,
+data_info = simulate_data(n_people = n_people, n_times = n_times, percent_missing = 0,
                           n_treatments = n_treatments, n_outcomes = n_outcomes,
                           treatment_effect_matrix = treatment_effect_matrix,
                           mediator_effect_matrix = mediator_effect_matrix,
@@ -68,14 +68,14 @@ indirect_effect = data_info$natural_indirect_effect
 parameter_matrix = data_info$parameter_matrix[1:n_parameters,]
 
 # Structure the treatment
-X = cbind(rep(1,nsubs), as.matrix(dataset[dataset$time == 1,c("X1", "X2")], nrows=nsubs))
+X = cbind(rep(1,n_people), as.matrix(dataset[dataset$time == 1,c("X1", "X2")], nrows=n_people))
 
 # Structure the mediator
-M_obs <- array(as.matrix(dataset[,c("M1", "M2")]), dim = c(ntimes, nsubs, n_mediators)) |> aperm(c(2,1,3))
-# you want the dimensions to be structured: nsubs, ntimes, n_mediators
+M_obs <- array(as.matrix(dataset[,c("M1", "M2")]), dim = c(ntimes, n_people, n_mediators)) |> aperm(c(2,1,3))
+# you want the dimensions to be structured: n_people, ntimes, n_mediators
 
 # Structure the outcome
-Y = as.matrix(dataset[dataset$time == 1, c("Y1")], nrows = nsubs)
+Y = as.matrix(dataset[dataset$time == 1, c("Y1")], nrows = n_people)
 
 # some priors
 
@@ -94,31 +94,32 @@ if(informative_priors){
   
   # Effect of X on the outcome
   direct_effect_mean = t(direct_effect)
-  direct_effect_covariance = diag(n_treatments+1)
+  direct_effect_covariance = diag(10, n_treatments+1)
   direct_effect_cholesky = chol(direct_effect_covariance)
 } else{
   # Effect of X on the parameter matrix
   X_fixed_effect_mean = matrix(rep(0, times = n_parameters * (n_treatments+1)), nrow = n_parameters, ncol = n_treatments+1, byrow = T)
-  X_fixed_effect_covariance = diag(n_treatments+1)
+  X_fixed_effect_covariance = diag(10, n_treatments+1)
   X_fixed_effect_cholesky = chol(X_fixed_effect_covariance)
-  parameter_rate_matrix = diag(.1,n_parameters)
+  parameter_rate_matrix = diag(10,n_parameters)
   
   # Effect of the parameter matrix on the outcome
   M_fixed_effect_mean = matrix(rep(0, times = n_parameters * n_outcomes), nrow = n_outcomes, ncol = n_parameters)
-  M_fixed_effect_covariance  = diag(n_parameters)
+  M_fixed_effect_covariance  = diag(10, n_parameters)
   M_fixed_effect_cholesky = chol(M_fixed_effect_covariance)
-  Y_rate_matrix = diag(.1,n_outcomes)
+  Y_rate_matrix = diag(10,n_outcomes)
   
   # Effect of X on the outcome
   direct_effect_mean = matrix(rep(0, times = n_treatments+1), nrow = n_outcomes, ncol = n_treatments+1)
-  direct_effect_covariance = diag(n_treatments+1)
+  direct_effect_covariance = diag(10, n_treatments+1)
   direct_effect_cholesky = chol(direct_effect_covariance)
 }
 
-jags_data = list(X = X, #scale(X, center = T, scale = F),
+jags_data = list(X = X,
                  parameter_matrix = parameter_matrix,
                  Y = Y,
-                 nsubs = nsubs,
+                 n_people = n_people,
+                 n_times = n_times,
                  n_treatments = n_treatments+1, # plus 1 because of the intercept term
                  n_parameters = n_parameters,
                  n_mediators = n_mediators,
