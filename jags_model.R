@@ -30,8 +30,8 @@ model {
   # ---- (1a) level-2 likelihood functions ----
   for(this_sub in 1:nsubs){
       # First we start out for the likelihood for the person-specific VAR parameters as a function of their treatment, X.
-      parameter_matrix.hat[1:n_parameters, this_sub] = X_fixed_effect[1:n_parameters, 1:n_treatments] %*% X[this_sub, 1:n_treatments] 
-      parameter_matrix[1:n_parameters, this_sub] ~ dmnorm(parameter_matrix.hat[1:n_parameters, this_sub], parameter_matrix.precision)
+      parameter_matrix.hat[1:n_parameters, this_sub] = X_fixed_effect[1:n_parameters, 1:n_treatments] %*% X[this_sub, 1:n_treatments]
+      parameter_matrix[1:n_parameters, this_sub] ~ dmnorm(parameter_matrix.hat[1:n_parameters, this_sub], parameter_matrix.precision[1:n_parameters, 1:n_parameters])
       
       # Then we can get the likelihood for the outcome as a function of the person-specific VAR parameters
       Y.hat[1, this_sub] = M_fixed_effect[1:n_outcomes, 1:n_parameters] %*% parameter_matrix[1:n_parameters, this_sub] + 
@@ -52,6 +52,13 @@ model {
   
   # ---- (1b) level-1 likelihood functions ----
   for(this_sub in 1:nsubs){
+    
+    
+    
+    
+    
+    
+    
     # First, feed the intercepts from the parameter matrix into its own object
     M_intercept[this_sub, 1:n_mediators] = parameter_matrix[1:n_mediators, this_sub]
 
@@ -98,21 +105,24 @@ model {
   
   for(this_parameter in 1:n_parameters){
     for(this_treatment in 1:n_treatments){
-      X_fixed_effect[this_parameter, this_treatment] ~ dnorm(X_fixed_effect_mean[this_parameter, this_treatment], X_fixed_effect_precision[this_treatment, this_treatment])
+      X_fixed_effect_raw[this_parameter, this_treatment] ~ dnorm(0, 1)
     }
+    X_fixed_effect[this_parameter, 1:n_treatments] = X_fixed_effect_mean[this_parameter, 1:n_treatments] + X_fixed_effect_cholesky[1:n_treatments, 1:n_treatments] %*% X_fixed_effect_raw[this_parameter, 1:n_treatments]
   }
-  parameter_matrix.precision ~ dwish(parameter_rate_matrix, n_parameters+3)
+  parameter_matrix.precision[1:n_parameters, 1:n_parameters] ~ dwish(parameter_rate_matrix, n_parameters+3)
   
   for(this_outcome in 1:n_outcomes){
     for(this_parameter in 1:n_parameters){
-      M_fixed_effect[this_outcome, this_parameter] ~ dnorm(M_fixed_effect_mean[this_outcome, this_parameter], M_fixed_effect_precision[this_parameter, this_parameter])
+      M_fixed_effect_raw[this_outcome, this_parameter] ~ dnorm(0, 1)
     }
+    M_fixed_effect[this_outcome, 1:n_parameters] = M_fixed_effect_mean[this_outcome, 1:n_parameters] + M_fixed_effect_cholesky[1:n_parameters, 1:n_parameters] %*% M_fixed_effect_raw[this_outcome, 1:n_parameters]
   }
   
-  for(this_outcome in 1:n_outcomes){
+  for(this_outcome in 1:n_outcomes){ 
     for(this_treatment in 1:n_treatments){
-      direct_effect[this_outcome, this_treatment] ~ dnorm(direct_effect_mean[this_outcome, this_treatment], direct_effect_precision[this_treatment, this_treatment])
+      direct_effect_raw[this_outcome, this_treatment] ~ dnorm(0, 1)
     }
+    direct_effect[this_outcome, 1:n_treatments] = direct_effect_mean[this_outcome, 1:n_treatments] + direct_effect_cholesky[1:n_treatments, 1:n_treatments] %*% direct_effect_raw[this_outcome, 1:n_treatments]
   }
   
   Y.precision ~ dgamma(.1, .1) # for univariate outcomes

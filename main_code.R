@@ -35,7 +35,7 @@ treatment_effect_matrix = matrix(c(0, 0, 0,  # X -> M_1 intercept
                                  nrow = n_parameters, ncol = n_treatments+1, byrow = T)
 mediator_effect_matrix = matrix(c(0,   # M_1 intercept -> Y
                                   0,   # M_2 intercept -> Y
-                                  0,   # M_1 autoregression -> Y
+                                  2,   # M_1 autoregression -> Y
                                   0,   # M_1 -> M_2 crossregression -> Y 
                                   0,   # M_2 -> M_1 crossregression -> Y
                                   0,   # M_2 autoregression -> Y
@@ -44,14 +44,14 @@ mediator_effect_matrix = matrix(c(0,   # M_1 intercept -> Y
                                   0),  # fisher z transformed M_1 M_2 correlation -> Y
                                 nrow = n_parameters, ncol = n_outcomes, byrow = T)
 direct_effect = matrix(c(0,  # Y intercept
-                         0,  # X1 -> Y
+                         5,  # X1 -> Y
                          0), # X2 -> Y
                        nrow = n_treatments + 1, ncol = n_outcomes, byrow = T)
-parameter_matrix_covariance = diag(n_parameters)/100
-Y_covariance = diag(n_outcomes)/100
+parameter_matrix_covariance = diag(n_parameters)/1
+Y_covariance = diag(n_outcomes)/1
 
 # JAGS model variables
-informative_priors = F
+informative_priors = T
 n_chains = 2
 
 # ---- Structure dataset ----
@@ -82,74 +82,84 @@ Y = as.matrix(dataset[dataset$time == 1, c("Y1")], nrows = nsubs)
 if(informative_priors){
   # Effect of X on the parameter matrix
   X_fixed_effect_mean = treatment_effect_matrix
-  X_fixed_effect_precision = diag(n_treatments+1)
+  X_fixed_effect_covariance = diag(n_treatments+1)
+  X_fixed_effect_cholesky = chol(X_fixed_effect_covariance)
   parameter_rate_matrix = solve(parameter_matrix_covariance)
   
   # Effect of the parameter matrix on the outcome
   M_fixed_effect_mean = t(mediator_effect_matrix)
-  M_fixed_effect_precision = diag(n_parameters)
+  M_fixed_effect_covariance  = diag(n_parameters)
+  M_fixed_effect_cholesky = chol(M_fixed_effect_covariance)
   Y_rate_matrix = solve(Y_covariance)
   
   # Effect of X on the outcome
   direct_effect_mean = t(direct_effect)
-  direct_effect_precision = diag(n_treatments+1)
+  direct_effect_covariance = diag(n_treatments+1)
+  direct_effect_cholesky = chol(direct_effect_covariance)
 } else{
   # Effect of X on the parameter matrix
   X_fixed_effect_mean = matrix(rep(0, times = n_parameters * (n_treatments+1)), nrow = n_parameters, ncol = n_treatments+1, byrow = T)
-  X_fixed_effect_precision = diag(n_treatments+1)
+  X_fixed_effect_covariance = diag(n_treatments+1)
+  X_fixed_effect_cholesky = chol(X_fixed_effect_covariance)
   parameter_rate_matrix = diag(.1,n_parameters)
   
   # Effect of the parameter matrix on the outcome
   M_fixed_effect_mean = matrix(rep(0, times = n_parameters * n_outcomes), nrow = n_outcomes, ncol = n_parameters)
-  M_fixed_effect_precision = diag(n_parameters)
+  M_fixed_effect_covariance  = diag(n_parameters)
+  M_fixed_effect_cholesky = chol(M_fixed_effect_covariance)
   Y_rate_matrix = diag(.1,n_outcomes)
   
   # Effect of X on the outcome
   direct_effect_mean = matrix(rep(0, times = n_treatments+1), nrow = n_outcomes, ncol = n_treatments+1)
-  direct_effect_precision = diag(n_treatments+1)
+  direct_effect_covariance = diag(n_treatments+1)
+  direct_effect_cholesky = chol(direct_effect_covariance)
 }
 
-jags_data = list(X = X,
+jags_data = list(X = X, #scale(X, center = T, scale = F),
                  parameter_matrix = parameter_matrix,
                  Y = Y,
                  nsubs = nsubs,
-                 n_treatments = n_treatments+1,
+                 n_treatments = n_treatments+1, # plus 1 because of the intercept term
                  n_parameters = n_parameters,
                  n_mediators = n_mediators,
                  n_outcomes = n_outcomes,
                  X_fixed_effect_mean = X_fixed_effect_mean,
-                 X_fixed_effect_precision = X_fixed_effect_precision,
+                 X_fixed_effect_cholesky = X_fixed_effect_cholesky, # feeding in the cholesky decompositions instead of precision/covariance matrix for the non-centered parameterization
                  M_fixed_effect_mean = M_fixed_effect_mean,
-                 M_fixed_effect_precision = M_fixed_effect_precision,
+                 M_fixed_effect_cholesky = M_fixed_effect_cholesky,
                  direct_effect_mean = direct_effect_mean,
-                 direct_effect_precision = direct_effect_precision, 
+                 direct_effect_cholesky = direct_effect_cholesky, 
                  parameter_rate_matrix = parameter_rate_matrix)
 
-# this should be a distribution
-create_inits = function(n_chains){
+set.seed(the_seed)
+create_inits = function(n_chains, 
+                        n_treatments, 
+                        n_parameters, 
+                        n_outcomes ){
   initial_values_list = NULL
   
   for(this_chain in 1:n_chains){
     # creating storage objects for our initial values
-    X_fixed_effect = matrix(NA, nrow = n_parameters, ncol = n_treatments+1)
-    M_fixed_effect = matrix(NA, nrow = n_outcomes, ncol = n_parameters)
-    direct_effect = matrix(NA, nrow = n_outcomes, ncol = n_treatments+1)
-    
+    X_fixed_effect_raw = matrix(NA, nrow = n_parameters, ncol = n_treatments+1)
+    M_fixed_effect_raw = matrix(NA, nrow = n_outcomes, ncol = n_parameters)
+    direct_effect_raw = matrix(NA, nrow = n_outcomes, ncol = n_treatments+1)
     # sampling the initial values
     for(this_parameter in 1:n_parameters){
-      X_fixed_effect[this_parameter,] = mvrnorm(mu = X_fixed_effect_mean[this_parameter, ], Sigma = X_fixed_effect_precision)
+      X_fixed_effect_raw[this_parameter,] = mvrnorm(mu = rep(0, times = n_treatments+1), Sigma = diag(n_treatments+1))
     }
-    parameter_matrix.precision = rWishart(n = 1, df = n_parameters+3, Sigma = solve(parameter_rate_matrix))
+    parameter_matrix.precision = rWishart(n = 1, df = n_parameters+3, Sigma = solve(parameter_rate_matrix)) |> drop()
     for(this_outcome in 1:n_outcomes){
-      M_fixed_effect[this_outcome, ] = mvrnorm(mu = M_fixed_effect_mean[this_outcome, ], Sigma = M_fixed_effect_precision)
-      direct_effect[this_outcome, ] = mvrnorm(mu = direct_effect_mean[this_outcome, ], Sigma = direct_effect_precision)
+      M_fixed_effect_raw[this_outcome, ] = mvrnorm(mu = rep(0, times = n_parameters), Sigma = diag(n_parameters))
+      direct_effect_raw[this_outcome, ] = mvrnorm(mu = rep(0, times = n_treatments+1), Sigma = diag(n_treatments+1))
     }
     Y.precision = rgamma(n = 1, shape = .1, rate = .1)
     
     # Organizing the samples in a list to pass onto the larger list of initial values
-    list_to_add = list(X_fixed_effect = X_fixed_effect,
-                       M_fixed_effect = M_fixed_effect,
-                       direct_effect = direct_effect,
+    list_to_add = list(X_fixed_effect_raw = X_fixed_effect_raw,
+                       parameter_matrix.precision = parameter_matrix.precision,
+                       M_fixed_effect_raw = M_fixed_effect_raw,
+                       direct_effect_raw = direct_effect_raw,
+                       Y.precision = Y.precision,
                        .RNG.name = "base::Mersenne-Twister",
                        .RNG.seed = 1000*this_chain)
     
@@ -159,10 +169,11 @@ create_inits = function(n_chains){
  return(initial_values_list)
 }
 
+inits_list = create_inits(n_chains, n_treatments, n_parameters, n_outcomes)
 jagsModel = jags.model(file = "jags_model.R", 
                        data = jags_data, 
-                       inits = create_inits(n_chains), 
-                       n.chains = 2, 
+                       inits = inits_list, 
+                       n.chains = n_chains, 
                        n.adapt = 4000) #n.adapt = 4000
 
 update(jagsModel, n.iter = 2500)
@@ -171,12 +182,9 @@ update(jagsModel, n.iter = 2500)
 
 parameterlist = c("X_fixed_effect", "M_fixed_effect", "indirect_effect", "direct_effect")
 
-codaSamples = coda.samples(jagsModel, variable.names = parameterlist, n.iter = 10000, thin = 1) 
+codaSamples = coda.samples(jagsModel, variable.names = parameterlist, n.iter = 50000, thin = 1) 
 
 resulttable = zcalc(codaSamples)
 resulttable
 
 plot(codaSamples[[1]])
-
-source('postcalc.R')
-zcalc(simple_chain)
