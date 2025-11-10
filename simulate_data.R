@@ -26,33 +26,29 @@ simulate_data = function(n_people = 100,
                          percent_missing = 0,
                          n_treatments = 2,
                          n_mediators = 2,
-                         n_outcomes = 2,
+                         n_outcomes = 1,
                          treatment_effect_matrix = matrix(c(0, 0, 0,  # X -> M_1 intercept
                                                             0, 0, 0,  # X -> M_2 intercept
                                                             0, 0, 0,  # X -> M_1 autoregression
                                                             0, 0, 0,  # X -> M_1 to M_2 crossregression  
                                                             0, 0, 0,  # X -> M_2 to M_1 crossregression
-                                                            0, 0, 0,  # X -> M_2 autoregression 
-                                                            0, 0, 0,  # X -> M_1 process noise sd
-                                                            0, 0, 0,  # X -> M_2 process noise sd
-                                                            0, 0, 0), # X -> M_1 & M_2 correlation
-                                                          nrow = 9, ncol = 3, byrow = T),
+                                                            0, 0, 0), # X -> M_2 autoregression 
+                                                          nrow = 6, ncol = 3, byrow = T),
                          mediator_effect_matrix = matrix(c(0,   # M_1 intercept -> Y
                                                            0,   # M_2 intercept -> Y
                                                            0,   # M_1 autoregression -> Y
                                                            0,   # M_1 -> M_2 crossregression -> Y 
                                                            0,   # M_2 -> M_1 crossregression -> Y
-                                                           0,   # M_2 autoregression -> Y
-                                                           0,   # M_1 log of process noise sd -> Y
-                                                           0,   # M_2 log of process noise sd -> Y
-                                                           0),  # fisher z transformed M_1 M_2 correlation -> Y
-                                                       nrow = 9, ncol = 1, byrow = T),
+                                                           0),  # M_2 autoregression -> Y
+                                                       nrow = 6, ncol = 1, byrow = T),
                          direct_effect = matrix(c(0,  # Y intercept
                                                   0,  # X1 -> Y
                                                   0), # X2 -> Y
                                                 nrow = 3, ncol = 1, byrow = T),
-                         parameter_matrix_covariance = diag(9),
-                         Y_covariance = diag(2)){
+                         parameter_matrix_covariance = diag(6),
+                         Y_covariance = diag(1),
+                         m_standard_deviations = c(1, 1),
+                         m_correlations = .2){
   # ---- Errors and warnings ----
   
   # Checking on the between_coefficient_matrix
@@ -68,7 +64,7 @@ simulate_data = function(n_people = 100,
   
   id = rep(1:n_people, each = n_times)
   time = 1:n_times
-  n_parameters = dim(treatment_effect_matrix)[1]
+  n_parameters = n_mediators + n_mediators^2
   
   X = mvrnorm(n = n_people, mu = rep(0, times = n_treatments), Sigma = diag(n_treatments))
   X = cbind(rep(1, n_people), X) # including the 1s to model the intercepts
@@ -79,54 +75,65 @@ simulate_data = function(n_people = 100,
   
   # Second, use these parameters to get the value of the mediator by...
   
-  # ...extracting the coefficients in the parameter matrix into more interpretable units...
+  # ...extracting the intercepts and coefficients in the parameter matrix into more interpretable units...
   m_intercepts = parameter_matrix[1:n_mediators,]
   
+  # transforming the autoregressions from fisher-z scores
   m_transition_matrix = array(parameter_matrix[(n_mediators+1):(n_mediators^2 + n_mediators),], 
                               dim = c(n_mediators, n_mediators, n_people))
   
+  # converting th
+  for(this_mediator in 1:n_mediators){
+    m_transition_matrix[this_mediator, this_mediator, ] = tanh(m_transition_matrix[this_mediator, this_mediator, ])
+  }
   # and of course, check for stability
   for(this_person in 1:n_people) {
     eigen_values = eigen(m_transition_matrix[, , this_person])$values
     max_eigen_value = max(Mod(eigen_values))
     
-    if(max_eigen_value >= .99) {
-      warning(paste("Participant", this_person, "has unstable transition matrix. Max |eigenvalue| =", round(max_eigen_value, 3)))
+    # when a participant has an eigen value greater than .99, this resamples their transition matrix until its below .99
+    if(max_eigen_value >= .99){
+      counter = 0
+      while(max_eigen_value >= .99){
+        counter = 1 + counter
+        cat("\rRedrawing transition matrix for participant ",this_person, ". ", "Redraw number: ", counter, sep = "")
+      
+        parameter_matrix_error[ , this_person] = t(mvrnorm(n = 1, mu = rep(0, times = n_parameters), Sigma = parameter_matrix_covariance))
+        parameter_matrix[ , this_person] = treatment_effect_matrix %*% X[this_person, ] + parameter_matrix_error[ , this_person]
+        m_transition_matrix[ , , this_person] = array(parameter_matrix[(n_mediators+1):(n_mediators^2 + n_mediators), this_person], 
+                                                  dim = c(n_mediators, n_mediators))
+        eigen_values = eigen(m_transition_matrix[, , this_person])$values
+        max_eigen_value = max(Mod(eigen_values))
+      }
+      cat("\n")
     }
   }
   
-  # ...and then transform the log standard deviations and fisher z transformed correlations into the 
-  # process noise covariance matrix using exponential and hyperbolic tangent functions respectively.
-  m_standard_deviations = parameter_matrix[(n_mediators^2 + n_mediators + 1):(n_mediators^2 + 2*n_mediators),] |> exp()
-  m_correlations = parameter_matrix[(n_mediators^2 + 2*n_mediators+1):dim(parameter_matrix)[1],] |> tanh()
-  
-  m_noise_covariance = array(NA, dim = c(n_mediators, n_mediators, n_people))
-  m_process_noise_matrix = array(NA, dim = c(n_times, n_mediators, n_people))
+  m_noise_covariance = array(NA, dim = c(n_mediators, n_mediators))
+  m_process_noise_matrix = array(NA, dim = c(n_times, n_mediators))
   
 ################################################################################
-###### This next for loop can ONLY accommodate 2 mediators at the moment  ###### 
-########### A change must be made to accommodate a different amount. ########### 
+#### This next chunk of code can ONLY accommodate 2 mediators at the moment ####
+########### A change must be made to accommodate a different amount. ###########
 ################################################################################
   off_diagonal_index = !diag(nrow(m_noise_covariance))  
-  for(this_person in 1:n_people){
-    diag(m_noise_covariance[ , , this_person]) = m_standard_deviations[,this_person]^2
-    m_noise_covariance[, , this_person][off_diagonal_index] =  prod(m_standard_deviations[,this_person]) * m_correlations[this_person]
-    m_process_noise_matrix[, ,this_person] = mvrnorm(n = n_times, mu = rep(0, times = n_mediators), Sigma = m_noise_covariance[,,this_person])
-  }
+  diag(m_noise_covariance[ , ]) = m_standard_deviations^2
+  m_noise_covariance[,][off_diagonal_index] =  prod(m_standard_deviations) * m_correlations
+  m_process_noise_matrix[,] = mvrnorm(n = n_times, mu = rep(0, times = n_mediators), Sigma = m_noise_covariance)
 
   
   # Third, create a storage objects for the mediator time series...
   M = array(NA, dim = c(n_times, n_mediators, n_people)) # (timepoints x mediators x subjects)
   
   # ...and set the initial values for each subject.
-  M[1, , ] = m_intercepts + m_process_noise_matrix[1,,]
+  M[1, , ] = m_intercepts + m_process_noise_matrix[1,]
   
   # fourth, loop over timepoints to fill in participant's values for each their mediating time series
   for(this_person in 1:n_people){
     for(this_time in 2:n_times){
         M[this_time, ,this_person] = m_intercepts[, this_person] + 
                           m_transition_matrix[, , this_person] %*% (M[this_time - 1, ,this_person] - m_intercepts[, this_person]) + 
-                          m_process_noise_matrix[this_time, ,this_person]
+                          m_process_noise_matrix[this_time, ]
     }
   }
   
