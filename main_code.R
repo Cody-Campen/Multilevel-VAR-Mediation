@@ -10,14 +10,15 @@ library(rjags)
 library(mnormt)
 library(MASS)
 library(dplyr)
+library(ggplot2)
 source("postcalc.R")
 source("simulate_data.R")
 
-the_seed = 1000
+the_seed = 1001
 
 # Dataset generation variables
-n_people = 100
-n_times = 30
+n_people = 112
+n_times = 56
 percent_missing = 0
 n_treatments = 2
 n_mediators = 2
@@ -26,22 +27,22 @@ n_outcomes = 1
 treatment_effect_matrix = matrix(c(0, 0, 2,  # X -> M_1 intercept
                                    0, 0, 0,  # X -> M_2 intercept
                                    0, 0, 0,  # X -> M_1 autoregression
-                                   .2, 0, 0,  # X -> M_1 to M_2 crossregression  
+                                   0, 0, 0,  # X -> M_1 to M_2 crossregression
                                    0, 0, 0,  # X -> M_2 to M_1 crossregression
-                                   0, .3, 0), # X -> M_2 autoregression 
-                                 nrow = n_parameters, ncol = n_treatments+1, byrow = T)
+                                   0, .3, 0), # X -> M_2 autoregression
+                                 nrow = 6, ncol = n_treatments+1, byrow = T)
 mediator_effect_matrix = matrix(c(3,   # M_1 intercept -> Y
                                   0,   # M_2 intercept -> Y
                                   0,   # M_1 autoregression -> Y
-                                  0,   # M_1 -> M_2 crossregression -> Y 
+                                  0,   # M_1 -> M_2 crossregression -> Y
                                   -2,   # M_2 -> M_1 crossregression -> Y
                                   0),  # M_2 autoregression -> Y
-                                nrow = n_parameters, ncol = n_outcomes, byrow = T)
+                                nrow = 6, ncol = n_outcomes, byrow = T)
 direct_effect = matrix(c(0,  # Y intercept
                          -5,  # X1 -> Y
                          5), # X2 -> Y
                        nrow = n_treatments + 1, ncol = n_outcomes, byrow = T)
-parameter_matrix_covariance = diag(6)/1
+parameter_matrix_covariance = diag(6)/10 # if you're covariance is too high, the distributions of the transition matrix parameters will become leptokurtic
 Y_covariance = diag(n_outcomes)/1
 
 # JAGS model variables
@@ -49,6 +50,7 @@ informative_priors = F  # T/F whether or not to use informative priors
 n_chains = 2            # the number of chains used for the MCMC
 
 # ---- Structure dataset ----
+set.seed(the_seed)
 data_info = simulate_data(n_people = n_people, 
                           n_times = n_times, 
                           percent_missing = 0,
@@ -64,6 +66,17 @@ data_info = simulate_data(n_people = n_people,
 dataset = data_info$dataset
 indirect_effect = data_info$natural_indirect_effect
 parameter_matrix = data_info$parameter_matrix[1:n_parameters,]
+
+# it seems we have stability in the time series
+for(this_mediator in 1:n_mediators){
+  title = paste("Participant time series data for mediator", this_mediator)
+  mediator_name = sym(names(dataset)[2 + n_treatments + this_mediator])
+  mediator_plot = ggplot(dataset, aes(x = time, y = !!mediator_name, col = id)) + 
+                    geom_line() +
+                    labs(title = title) +
+                    theme(legend.position="none")
+  print(mediator_plot)
+}
 
 # Structure the treatment
 X = cbind(rep(1,n_people), as.matrix(dataset[dataset$time == 1,c("X1", "X2")], nrows=n_people))
@@ -92,7 +105,7 @@ if(informative_priors){
   
   # Effect of X on the outcome
   direct_effect_mean = t(direct_effect)
-  direct_effect_covariance = diag(10, n_treatments+1)
+  direct_effect_covariance = diag(n_treatments+1)
   direct_effect_cholesky = chol(direct_effect_covariance)
 } else{
   # Effect of X on the parameter matrix
@@ -173,18 +186,24 @@ jagsModel = jags.model(file = "jags_model.R",
                        data = jags_data, 
                        inits = inits_list, 
                        n.chains = n_chains, 
-                       n.adapt = 1000) #n.adapt = 4000
+                       n.adapt = 4000)
 
-update(jagsModel, n.iter = 1000)
+update(jagsModel, n.iter = 15000)
 
 # warm up/burn in period 2500
 
 parameterlist = c("X_fixed_effect", "M_fixed_effect", "indirect_effect", "direct_effect")
 
-codaSamples = coda.samples(jagsModel, variable.names = parameterlist, n.iter = 10000, thin = 1) 
-save(codaSamples, file = "codaSamples.RData")
+codaSamples = coda.samples(jagsModel, variable.names = parameterlist, n.iter = 50000, thin = 1) 
+save(codaSamples, file = "codaSamples_uninformative_priors.RData")
 
 resulttable = zcalc(codaSamples)
 resulttable
 
-plot(codaSamples[[1]])
+library(ks)
+
+answers = c(mediator_effect_matrix, vec(treatment_effect_matrix), direct_effect)
+cbind(answers = rep(answers, length.out = nrow(resulttable)), resulttable)
+
+
+plot(codaSamples)

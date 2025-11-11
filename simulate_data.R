@@ -75,18 +75,18 @@ simulate_data = function(n_people = 100,
   
   # Second, use these parameters to get the value of the mediator by...
   
-  # ...extracting the intercepts and coefficients in the parameter matrix into more interpretable units...
+  # ...extracting the intercepts and coefficients in the parameter matrix into more interpretable units.
   m_intercepts = parameter_matrix[1:n_mediators,]
   
-  # transforming the autoregressions from fisher-z scores
   m_transition_matrix = array(parameter_matrix[(n_mediators+1):(n_mediators^2 + n_mediators),], 
                               dim = c(n_mediators, n_mediators, n_people))
   
-  # converting th
+  # and get the final Pearson correlations in the transition matrix from the fisher z transforms
   for(this_mediator in 1:n_mediators){
     m_transition_matrix[this_mediator, this_mediator, ] = tanh(m_transition_matrix[this_mediator, this_mediator, ])
   }
-  # and of course, check for stability
+  
+  # and of course, check for stability.
   for(this_person in 1:n_people) {
     eigen_values = eigen(m_transition_matrix[, , this_person])$values
     max_eigen_value = max(Mod(eigen_values))
@@ -95,13 +95,21 @@ simulate_data = function(n_people = 100,
     if(max_eigen_value >= .99){
       counter = 0
       while(max_eigen_value >= .99){
+        # Let the user know when a transition matrix gets redrawn + how many times its getting redrawn
         counter = 1 + counter
         cat("\rRedrawing transition matrix for participant ",this_person, ". ", "Redraw number: ", counter, sep = "")
-      
+        
+        # Resample the parametermatrix
         parameter_matrix_error[ , this_person] = t(mvrnorm(n = 1, mu = rep(0, times = n_parameters), Sigma = parameter_matrix_covariance))
         parameter_matrix[ , this_person] = treatment_effect_matrix %*% X[this_person, ] + parameter_matrix_error[ , this_person]
         m_transition_matrix[ , , this_person] = array(parameter_matrix[(n_mediators+1):(n_mediators^2 + n_mediators), this_person], 
                                                   dim = c(n_mediators, n_mediators))
+        
+        # Transform the value from normal to Pearson correlations
+        for(this_mediator in 1:n_mediators){
+          m_transition_matrix[this_mediator, this_mediator, this_person] = tanh(m_transition_matrix[this_mediator, this_mediator, this_person])
+        }
+        
         eigen_values = eigen(m_transition_matrix[, , this_person])$values
         max_eigen_value = max(Mod(eigen_values))
       }
@@ -143,11 +151,11 @@ simulate_data = function(n_people = 100,
   Y = t(parameter_matrix) %*% mediator_effect_matrix + X %*% direct_effect + Y_error
 
     # ---- Organizing and returning results ----
-  dataset = data.frame(id = id,
+  dataset = data.frame(id = as.factor(id),
                        time = time)
   
   # Repeat X across each timepoint for long structure
-  X_df = apply(X[,-1], 2, function(x) rep(x, each = n_times))
+  X_df = apply(X[,-1, drop = F], 2, function(x) rep(x, each = n_times))
   colnames(X_df) = paste("X", 1:n_treatments, sep = "")
   dataset = cbind(dataset, X_df)
   

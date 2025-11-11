@@ -58,10 +58,11 @@ model {
       M[this_person, this_time, 1:n_mediators] ~ dmnorm(M.hat[this_person, this_time, 1:n_mediators], M.precision[1:n_mediators, 1:n_mediators])
     }
     
-    # ---- (1.2.1) Place the entries from the parameter matrix (estimated above) into their own objects ----
+    # ---- (1.2.1) Place the entries from the parameter matrix (estimated above on line 34) into their own objects ----
     # for the intercept
     M_intercept[this_person, 1:n_mediators] = parameter_matrix[1:n_mediators, this_person]
-
+    
+    # and for the cross regressions
     # and then coefficients
     for(j in 1:n_mediators){ # column j
       for(i in 1:n_mediators){ # row i
@@ -71,6 +72,8 @@ model {
         M_transition_matrix[this_person, i, j] = parameter_matrix[n_mediators+(j-1)*n_mediators+i, this_person]
       }
     }
+    
+    
   }
   
   # ---- (1.2.2) Define the person-invariant process noise structure ----
