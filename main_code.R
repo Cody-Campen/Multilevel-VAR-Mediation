@@ -17,7 +17,7 @@ source("simulate_data.R")
 the_seed = 1001
 
 # Dataset generation variables
-n_people = 112
+n_people = 138
 n_times = 56
 percent_missing = 0
 n_treatments = 2
@@ -195,7 +195,7 @@ update(jagsModel, n.iter = 15000)
 parameterlist = c("X_fixed_effect", "M_fixed_effect", "indirect_effect", "direct_effect")
 
 codaSamples = coda.samples(jagsModel, variable.names = parameterlist, n.iter = 50000, thin = 1) 
-save(codaSamples, file = "codaSamples_uninformative_priors.RData")
+save(codaSamples, file = "MCMC_seed_1001_npeople_114_ntimes_56.RData")
 
 resulttable = zcalc(codaSamples)
 resulttable
