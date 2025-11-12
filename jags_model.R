@@ -128,26 +128,17 @@ model {
   
   # For the parameters used to generate the mediator (X_fixed_effect and parameter_matrix.precision)
   for(this_parameter in 1:n_parameters){
-    for(this_treatment in 1:n_treatments){
-      X_fixed_effect_raw[this_parameter, this_treatment] ~ dnorm(0, 1)
-    }
-    X_fixed_effect[this_parameter, 1:n_treatments] = X_fixed_effect_mean[this_parameter, 1:n_treatments] + X_fixed_effect_cholesky[1:n_treatments, 1:n_treatments] %*% X_fixed_effect_raw[this_parameter, 1:n_treatments]
+    X_fixed_effect[this_parameter, 1:n_treatments] ~ dmnorm(X_fixed_effect_mean[this_parameter, 1:n_treatments], X_fixed_effect_precision)
   }
   parameter_matrix.precision[1:n_parameters, 1:n_parameters] ~ dwish(parameter_rate_matrix, n_parameters+3)
   
   # And for the parameters used to generate the outcome (M_fixed_effect, direct_effect, and Y.precision)
   for(this_outcome in 1:n_outcomes){
-    for(this_parameter in 1:n_parameters){
-      M_fixed_effect_raw[this_outcome, this_parameter] ~ dnorm(0, 1)
-    }
-    M_fixed_effect[this_outcome, 1:n_parameters] = M_fixed_effect_mean[this_outcome, 1:n_parameters] + M_fixed_effect_cholesky[1:n_parameters, 1:n_parameters] %*% M_fixed_effect_raw[this_outcome, 1:n_parameters]
+    M_fixed_effect[this_outcome, 1:n_parameters] ~ dmnorm(M_fixed_effect_mean[this_outcome, 1:n_parameters], M_fixed_effect_precision) 
   }
   
   for(this_outcome in 1:n_outcomes){ 
-    for(this_treatment in 1:n_treatments){
-      direct_effect_raw[this_outcome, this_treatment] ~ dnorm(0, 1)
-    }
-    direct_effect[this_outcome, 1:n_treatments] = direct_effect_mean[this_outcome, 1:n_treatments] + direct_effect_cholesky[1:n_treatments, 1:n_treatments] %*% direct_effect_raw[this_outcome, 1:n_treatments]
+    direct_effect[this_outcome, 1:n_treatments] ~ dmnorm(direct_effect_mean[this_outcome, 1:n_treatments], direct_effect_precision)
   }
   
   Y.precision ~ dgamma(.1, .1) # for univariate outcomes

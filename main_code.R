@@ -7,14 +7,15 @@
 #'    
 
 library(rjags)
-library(mnormt)
 library(MASS)
-library(dplyr)
-library(ggplot2)
+library(ks)
 source("postcalc.R")
 source("simulate_data.R")
+source("create_inits.R")
 
 the_seed = 1001
+informative_priors = informative_priors  # T/F whether or not to use informative priors
+diffuseness = diffuseness
 
 # Dataset generation variables
 n_people = 138
@@ -24,29 +25,28 @@ n_treatments = 2
 n_mediators = 2
 n_parameters = 6
 n_outcomes = 1
-treatment_effect_matrix = matrix(c(0, 0, 2,  # X -> M_1 intercept
-                                   0, 0, 0,  # X -> M_2 intercept
-                                   0, 0, 0,  # X -> M_1 autoregression
-                                   0, 0, 0,  # X -> M_1 to M_2 crossregression
-                                   0, 0, 0,  # X -> M_2 to M_1 crossregression
+treatment_effect_matrix = matrix(c(0, 0, 2,   # X -> M_1 intercept
+                                   0, 0, 0,   # X -> M_2 intercept
+                                   0, 0, 0,   # X -> M_1 autoregression
+                                   0, 0, 0,   # X -> M_1 to M_2 crossregression
+                                   0, 0, 0,   # X -> M_2 to M_1 crossregression
                                    0, .3, 0), # X -> M_2 autoregression
                                  nrow = 6, ncol = n_treatments+1, byrow = T)
 mediator_effect_matrix = matrix(c(3,   # M_1 intercept -> Y
                                   0,   # M_2 intercept -> Y
                                   0,   # M_1 autoregression -> Y
                                   0,   # M_1 -> M_2 crossregression -> Y
-                                  -2,   # M_2 -> M_1 crossregression -> Y
+                                  -2,  # M_2 -> M_1 crossregression -> Y
                                   0),  # M_2 autoregression -> Y
                                 nrow = 6, ncol = n_outcomes, byrow = T)
-direct_effect = matrix(c(0,  # Y intercept
-                         -5,  # X1 -> Y
-                         5), # X2 -> Y
+direct_effect = matrix(c(0,   # Y intercept
+                         -3,  # X1 -> Y
+                         3),  # X2 -> Y
                        nrow = n_treatments + 1, ncol = n_outcomes, byrow = T)
-parameter_matrix_covariance = diag(6)/10 # if you're covariance is too high, the distributions of the transition matrix parameters will become leptokurtic
+parameter_matrix_covariance = diag(6)/10 
 Y_covariance = diag(n_outcomes)/1
 
 # JAGS model variables
-informative_priors = F  # T/F whether or not to use informative priors
 n_chains = 2            # the number of chains used for the MCMC
 
 # ---- Structure dataset ----
@@ -67,17 +67,6 @@ dataset = data_info$dataset
 indirect_effect = data_info$natural_indirect_effect
 parameter_matrix = data_info$parameter_matrix[1:n_parameters,]
 
-# it seems we have stability in the time series
-for(this_mediator in 1:n_mediators){
-  title = paste("Participant time series data for mediator", this_mediator)
-  mediator_name = sym(names(dataset)[2 + n_treatments + this_mediator])
-  mediator_plot = ggplot(dataset, aes(x = time, y = !!mediator_name, col = id)) + 
-                    geom_line() +
-                    labs(title = title) +
-                    theme(legend.position="none")
-  print(mediator_plot)
-}
-
 # Structure the treatment
 X = cbind(rep(1,n_people), as.matrix(dataset[dataset$time == 1,c("X1", "X2")], nrows=n_people))
 
@@ -88,43 +77,51 @@ M_obs <- array(as.matrix(dataset[,c("M1", "M2")]), dim = c(n_times, n_people, n_
 # Structure the outcome
 Y = as.matrix(dataset[dataset$time == 1, c("Y1")], nrows = n_people)
 
-# some priors
+# ---- Define the priors ----
 
 if(informative_priors){
   # Effect of X on the parameter matrix
   X_fixed_effect_mean = treatment_effect_matrix
-  X_fixed_effect_covariance = diag(n_treatments+1)
-  X_fixed_effect_cholesky = chol(X_fixed_effect_covariance)
-  parameter_rate_matrix = solve(parameter_matrix_covariance)
+  X_fixed_effect_covariance = diag(diffuseness, n_treatments+1)
+  parameter_rate_matrix = diag(diffuseness, n_parameters)
   
   # Effect of the parameter matrix on the outcome
   M_fixed_effect_mean = t(mediator_effect_matrix)
-  M_fixed_effect_covariance  = diag(n_parameters)
-  M_fixed_effect_cholesky = chol(M_fixed_effect_covariance)
-  Y_rate_matrix = solve(Y_covariance)
+  M_fixed_effect_covariance  = diag(diffuseness, n_parameters)
+  Y_rate_matrix = diag(diffuseness, n_parameters)
   
   # Effect of X on the outcome
   direct_effect_mean = t(direct_effect)
-  direct_effect_covariance = diag(n_treatments+1)
-  direct_effect_cholesky = chol(direct_effect_covariance)
+  direct_effect_covariance = diag(diffuseness, n_treatments+1)
 } else{
   # Effect of X on the parameter matrix
   X_fixed_effect_mean = matrix(rep(0, times = n_parameters * (n_treatments+1)), nrow = n_parameters, ncol = n_treatments+1, byrow = T)
-  X_fixed_effect_covariance = diag(10, n_treatments+1)
-  X_fixed_effect_cholesky = chol(X_fixed_effect_covariance)
-  parameter_rate_matrix = diag(10,n_parameters)
+  X_fixed_effect_covariance = diag(diffuseness, n_treatments+1)
+  parameter_rate_matrix = diag(diffuseness, n_parameters)
   
   # Effect of the parameter matrix on the outcome
   M_fixed_effect_mean = matrix(rep(0, times = n_parameters * n_outcomes), nrow = n_outcomes, ncol = n_parameters)
-  M_fixed_effect_covariance  = diag(10, n_parameters)
-  M_fixed_effect_cholesky = chol(M_fixed_effect_covariance)
-  Y_rate_matrix = diag(10,n_outcomes)
+  M_fixed_effect_covariance  = diag(diffuseness, n_parameters)
+  Y_rate_matrix = diag(diffuseness,n_outcomes)
   
   # Effect of X on the outcome
   direct_effect_mean = matrix(rep(0, times = n_treatments+1), nrow = n_outcomes, ncol = n_treatments+1)
-  direct_effect_covariance = diag(10, n_treatments+1)
-  direct_effect_cholesky = chol(direct_effect_covariance)
+  direct_effect_covariance = diag(diffuseness, n_treatments+1)
 }
+
+# ---- Set up the initial values ----
+inits_list = create_inits(X_fixed_effect_mean = X_fixed_effect_mean,
+                          X_fixed_effect_covariance = X_fixed_effect_covariance,
+                          parameter_rate_matrix = parameter_rate_matrix,
+                          M_fixed_effect_mean = M_fixed_effect_mean,
+                          M_fixed_effect_covariance = M_fixed_effect_covariance,
+                          direct_effect_mean = direct_effect_mean,
+                          direct_effect_covariance = direct_effect_covariance,
+                          n_chains = n_chains, 
+                          n_treatments = n_treatments, 
+                          n_parameters = n_parameters,
+                          n_mediators = n_mediators,
+                          n_outcomes = n_outcomes)
 
 jags_data = list(X = X,
                  M = M_obs,
@@ -136,52 +133,14 @@ jags_data = list(X = X,
                  n_mediators = n_mediators,
                  n_outcomes = n_outcomes,
                  X_fixed_effect_mean = X_fixed_effect_mean,
-                 X_fixed_effect_cholesky = X_fixed_effect_cholesky, # feeding in the cholesky decompositions instead of precision/covariance matrix for the non-centered parameterization
+                 X_fixed_effect_precision = solve(X_fixed_effect_covariance), 
                  M_fixed_effect_mean = M_fixed_effect_mean,
-                 M_fixed_effect_cholesky = M_fixed_effect_cholesky,
+                 M_fixed_effect_precision = solve(M_fixed_effect_covariance),
                  direct_effect_mean = direct_effect_mean,
-                 direct_effect_cholesky = direct_effect_cholesky, 
+                 direct_effect_precision = solve(direct_effect_covariance), 
                  parameter_rate_matrix = parameter_rate_matrix)
 
-set.seed(the_seed)
-create_inits = function(n_chains, 
-                        n_treatments, 
-                        n_parameters, 
-                        n_outcomes ){
-  initial_values_list = NULL
-  
-  for(this_chain in 1:n_chains){
-    # creating storage objects for our initial values
-    X_fixed_effect_raw = matrix(NA, nrow = n_parameters, ncol = n_treatments+1)
-    M_fixed_effect_raw = matrix(NA, nrow = n_outcomes, ncol = n_parameters)
-    direct_effect_raw = matrix(NA, nrow = n_outcomes, ncol = n_treatments+1)
-    # sampling the initial values
-    for(this_parameter in 1:n_parameters){
-      X_fixed_effect_raw[this_parameter,] = mvrnorm(mu = rep(0, times = n_treatments+1), Sigma = diag(n_treatments+1))
-    }
-    parameter_matrix.precision = rWishart(n = 1, df = n_parameters+3, Sigma = solve(parameter_rate_matrix)) |> drop()
-    for(this_outcome in 1:n_outcomes){
-      M_fixed_effect_raw[this_outcome, ] = mvrnorm(mu = rep(0, times = n_parameters), Sigma = diag(n_parameters))
-      direct_effect_raw[this_outcome, ] = mvrnorm(mu = rep(0, times = n_treatments+1), Sigma = diag(n_treatments+1))
-    }
-    Y.precision = rgamma(n = 1, shape = .1, rate = .1)
-    
-    # Organizing the samples in a list to pass onto the larger list of initial values
-    list_to_add = list(X_fixed_effect_raw = X_fixed_effect_raw,
-                       parameter_matrix.precision = parameter_matrix.precision,
-                       M_fixed_effect_raw = M_fixed_effect_raw,
-                       direct_effect_raw = direct_effect_raw,
-                       Y.precision = Y.precision,
-                       .RNG.name = "base::Mersenne-Twister",
-                       .RNG.seed = 1000*this_chain)
-    
-    initial_values_list[[this_chain]] = list_to_add
-  }
-  
- return(initial_values_list)
-}
 
-inits_list = create_inits(n_chains, n_treatments, n_parameters, n_outcomes)
 jagsModel = jags.model(file = "jags_model.R", 
                        data = jags_data, 
                        inits = inits_list, 
@@ -194,16 +153,14 @@ update(jagsModel, n.iter = 15000)
 
 parameterlist = c("X_fixed_effect", "M_fixed_effect", "indirect_effect", "direct_effect")
 
-codaSamples = coda.samples(jagsModel, variable.names = parameterlist, n.iter = 50000, thin = 1) 
-save(codaSamples, file = "MCMC_seed_1001_npeople_114_ntimes_56.RData")
+before_time = Sys.time()
+codaSamples = coda.samples(jagsModel, variable.names = parameterlist, n.iter = 20000, thin = 1) 
+run_time = Sys.time() - before_time
 
-resulttable = zcalc(codaSamples)
-resulttable
+true_values = c(mediator_effect_matrix, vec(treatment_effect_matrix), direct_effect)
+coda_answers = cbind(true_values = rep(answers, length.out = nrow(resulttable)), resulttable)
 
-library(ks)
+answers = list(coda_answers = coda_answers,
+               run_time = run_time)
 
-answers = c(mediator_effect_matrix, vec(treatment_effect_matrix), direct_effect)
-cbind(answers = rep(answers, length.out = nrow(resulttable)), resulttable)
-
-
-plot(codaSamples)
+save(answers, file = paste0("answers_","informative=",informative_priors, "_diffuseness=",diffuseness,".RData"))
