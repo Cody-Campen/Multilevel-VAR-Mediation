@@ -16,6 +16,7 @@ source("create_inits.R")
 the_seed = 1001
 informative_priors = informative_priors  # T/F whether or not to use informative priors
 diffuseness = diffuseness
+output_name = paste0("answers_", informative_priors, "_", diffuseness)
 
 # Dataset generation variables
 n_people = 138
@@ -157,10 +158,14 @@ before_time = Sys.time()
 codaSamples = coda.samples(jagsModel, variable.names = parameterlist, n.iter = 20000, thin = 1) 
 run_time = Sys.time() - before_time
 
+resulttable = zcalc(codaSamples)
+
 true_values = c(mediator_effect_matrix, vec(treatment_effect_matrix), direct_effect)
-coda_answers = cbind(true_values = rep(answers, length.out = nrow(resulttable)), resulttable)
+coda_answers = cbind(true_values = rep(true_values, length.out = nrow(resulttable)), resulttable)
 
 answers = list(coda_answers = coda_answers,
                run_time = run_time)
 
-save(answers, file = paste0("answers_","informative=",informative_priors, "_diffuseness=",diffuseness,".RData"))
+assign(output_name, answers)
+
+save(output_name, file = paste0("answers_","informative=",informative_priors, "_diffuseness=",diffuseness,".RData"))
