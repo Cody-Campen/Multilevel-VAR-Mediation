@@ -14,14 +14,14 @@ source("simulate_data.R")
 source("create_inits.R")
 
 the_seed = 1001
-informative_priors = informative_priors  # T/F whether or not to use informative priors
-diffuseness = diffuseness
+informative_priors = T  # T/F whether or not to use informative priors
+diffuseness = 5
 output_name = paste0("answers_", informative_priors, "_", diffuseness)
 
 # Dataset generation variables
 n_people = 138
 n_times = 56
-percent_missing = 0
+percent_missing = .3
 n_treatments = 2
 n_mediators = 2
 n_parameters = 6
@@ -48,13 +48,13 @@ parameter_matrix_covariance = diag(6)/10
 Y_covariance = diag(n_outcomes)/1
 
 # JAGS model variables
-n_chains = 2            # the number of chains used for the MCMC
+n_chains = 2
 
 # ---- Structure dataset ----
 set.seed(the_seed)
 data_info = simulate_data(n_people = n_people, 
                           n_times = n_times, 
-                          percent_missing = 0,
+                          percent_missing = percent_missing,
                           n_treatments = n_treatments, 
                           n_mediators = n_mediators, 
                           n_outcomes = n_outcomes,
@@ -72,11 +72,39 @@ parameter_matrix = data_info$parameter_matrix[1:n_parameters,]
 X = cbind(rep(1,n_people), as.matrix(dataset[dataset$time == 1,c("X1", "X2")], nrows=n_people))
 
 # Structure the mediator
-M_obs <- array(as.matrix(dataset[,c("M1", "M2")]), dim = c(n_times, n_people, n_mediators)) |> aperm(c(2,1,3))
+M <- array(as.matrix(dataset[,c("M1", "M2")]), dim = c(n_times, n_people, n_mediators)) |> aperm(c(2,1,3))
 # you want the dimensions to be structured: n_people, n_times, n_mediators
 
 # Structure the outcome
 Y = as.matrix(dataset[dataset$time == 1, c("Y1")], nrows = n_people)
+
+# Now, we create objects to handle the time indexing
+# Begin by creating objects to store our values
+n_seen = vector(length = n_people)
+n_miss = vector(length = n_people)
+times_seen = matrix(NA, nrow = n_people, ncol = n_times)
+times_missed = matrix(NA, nrow = n_people, ncol = n_times)
+
+# and loop over each person to fill in their values
+is_missing = matrix(NA, nrow = n_people, ncol = n_times)
+for(this_person in 1:n_people){
+  for(this_time in 2:n_times){
+    # if any of the mediator values are missing at this time, then it will enter 1. If all are observed, it will enter 0.
+    is_missing[this_person, this_time] = ifelse(sum(is.na(M[this_person, this_time, ]))==0, 0, 1)
+  }
+}
+
+for(this_person in 1:n_people){
+  n_miss[this_person] = length(which(is_missing[this_person,] %in% 1))
+  # for those with missing values..
+  if(n_miss[this_person] != 0){
+    # record the location of their missing time point
+    times_missed[this_person, 1:n_miss[this_person]] = which(is_missing[this_person,] %in% 1)
+  }
+  n_seen[this_person] = length(which(is_missing[this_person, ] %in% 0))
+  times_seen[this_person, 1:n_seen[this_person]] = which(is_missing[this_person, ] %in% 0)
+}
+
 
 # ---- Define the priors ----
 
@@ -125,10 +153,13 @@ inits_list = create_inits(X_fixed_effect_mean = X_fixed_effect_mean,
                           n_outcomes = n_outcomes)
 
 jags_data = list(X = X,
-                 M = M_obs,
+                 M = M,
                  Y = Y,
                  n_people = n_people,
-                 n_times = n_times,
+                 times_seen = times_seen,
+                 times_missed = times_missed,
+                 n_seen = n_seen,
+                 n_miss = n_miss,
                  n_treatments = n_treatments+1, # plus 1 because of the intercept term
                  n_parameters = n_parameters,
                  n_mediators = n_mediators,
@@ -169,3 +200,11 @@ answers = list(coda_answers = coda_answers,
 assign(output_name, answers)
 
 save(output_name, file = paste0("answers_","informative=",informative_priors, "_diffuseness=",diffuseness,".RData"))
+
+# the dungeon
+
+for(this_person in 1:n_people){
+  for(this_time in times_missed[this_person, 1:n_miss[this_person]]){
+    print(M[this_person, this_time-1, 1:n_mediators])
+  }
+}

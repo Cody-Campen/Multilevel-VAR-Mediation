@@ -15,7 +15,10 @@
 #' M_ij: a mediator time series for person i at time j
 #' Y_i: the outcome variable for person i
 #' n_people: the number of people/clusters in your dataset
-#' n_times: the number of observations for each person/cluster
+#' n_seen: A vector of length n_people. The number of completed observations from each participant
+#' n_miss: A vector of length n_people. The number of missing datapoints from each participant
+#' 
+#' 
 #' n_treatments: the number of treatment variables used
 #' n_mediators: the number of mediator time series used
 #' n_parameters: the number of parameters estimated---which is equal to n_mediators + n_mediators^2.
@@ -71,10 +74,20 @@ model {
     # Begin by setting the initial values for each mediator time series
     M[this_person, 1, 1:n_mediators] ~ dmnorm(M_intercept[this_person, 1:n_mediators], M.precision[1:n_mediators, 1:n_mediators])
 
-    # then define the likelihood for the rest of the time series
-    for(this_time in 2:n_times){
-      M.hat[this_person, this_time, 1:n_mediators] = M_intercept[this_person, 1:n_mediators] + M_transition_matrix[this_person, 1:n_mediators, 1:n_mediators] %*% ( M[this_person, this_time-1, 1:n_mediators] - M_intercept[this_person, 1:n_mediators] )
+    # then define the likelihood for the rest of the time series for the observed values
+    for(this_time in times_seen[this_person, 1:n_seen[this_person]]){
+      M.hat[this_person, this_time, 1:n_mediators] = M_intercept[this_person, 1:n_mediators] + M_transition_matrix[this_person, 1:n_mediators, 1:n_mediators] %*% (M[this_person, this_time-1, 1:n_mediators] - M_intercept[this_person, 1:n_mediators])
       M[this_person, this_time, 1:n_mediators] ~ dmnorm(M.hat[this_person, this_time, 1:n_mediators], M.precision[1:n_mediators, 1:n_mediators])
+    }
+    
+    # and for the missing values
+    for(this_time in times_missed[this_person, 1:n_miss[this_person]]){
+      M.hat[this_person, this_time, 1:n_mediators] = M_intercept[this_person, 1:n_mediators] + M_transition_matrix[this_person, 1:n_mediators, 1:n_mediators] %*% (M[this_person, this_time-1, 1:n_mediators] - M_intercept[this_person, 1:n_mediators])
+
+      # loop through each mediator
+      for(this_mediator in 1:n_mediators){
+        M[this_person, this_time, this_mediator] ~ dnorm(M.hat[this_person, this_time, this_mediator], pow(process_noise[this_mediator], -2))
+      }
     }
     
     # ---- (1.2.1) Take the entries from the parameter matrix (estimated above on line 34) into their own objects with interpretable names ----
@@ -95,15 +108,15 @@ model {
     
   }
   
-  # ---- (1.2.2) Define the person-invariant process noise structure ----
+  # ---- (1.2.2) Define the person-invariance M precision matrix ----
   # Here, we're wanting to get all of the parts necessary to build the process noise precision matrix (which gets used on line 53 and 58 in the M likelihood)
   
   # We begin by getting the process noise SDs and variances
   for(this_mediator in 1:n_mediators){
-    # first we transform the log process noise to get the real process noise
+    # first we transform the log process noise prior to get the real process noise
     process_noise[this_mediator] = exp(log_process_noise[this_mediator])
     
-    # and fill in the covariance diagonal while we're still in this loop
+    # and fill in the covariance diagonal with the variances while we're still in this loop
     M_covariance_matrix[this_mediator, this_mediator] = process_noise[this_mediator] * process_noise[this_mediator]
   }
   
