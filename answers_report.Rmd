@@ -1,0 +1,45 @@
+---
+title: "HPC 11/13/2025 run report"
+author: "Cody Campen"
+output: html_document
+---
+This code should take all of the answers and store them in a big list.
+```{r}
+answers_list = list()
+index = 0
+for(this_prior in c(TRUE, FALSE)){
+  for(this_diffuseness in c(1, 2, 4, 8)){
+    file_name = paste0("answers_informative=", this_prior, "_diffuseness=", this_diffuseness,".RData")
+    load(file_name)
+    answers_list[[file_name]] = answers$coda_answers
+  }
+}
+```
+
+From this list, we're interested in estimate bias, ESS and $\hat{r}$ across conditions. This next code chunk will return the 5 worst performing parameters for each condition.
+
+```{r}
+get_statistics = function(list){
+  abs_bias = abs(list$true_values[1:27] - list$mean[1:27])
+  ess = list$ESS[1:27]
+  rhat = list$RHAT[1:27]
+  
+  names(abs_bias) = rownames(list[1:27,])
+  names(ess) = rownames(list[1:27,])
+  names(rhat) = rownames(list[1:27,])
+  
+  return(list(absolute_bias = sort(abs_bias, decreasing = T)[1:5],
+              expected_sample_size = sort(ess)[1:5],
+              r_hat = sort(rhat, decreasing = T)[1:5]))
+}
+lapply(answers_list, get_statistics)
+```
+
+It seems the less diffuse options work much better than the more diffuse options. Lets go with uninformative and diffuseness = 1
+
+Let's see a plot of the chains for the conditions with mean 0 priors and less diffuseness
+```{r, fig.width = 48, fig.height = 36}
+library(rjags)
+load("answers_informative=FALSE_diffuseness=1.RData")
+plot(answers$codaSamles) #there's a typo coded in my entry here, but the code should still work as expected
+```

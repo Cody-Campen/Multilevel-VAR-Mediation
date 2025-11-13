@@ -13,15 +13,14 @@ source("postcalc.R")
 source("simulate_data.R")
 source("create_inits.R")
 
-the_seed = 1001
-informative_priors = T  # T/F whether or not to use informative priors
-diffuseness = 5
-output_name = paste0("answers_", informative_priors, "_", diffuseness)
+the_seed = the_seed
+informative_priors = informative_priors # T/F whether or not to use informative priors
+diffuseness = diffuseness
 
 # Dataset generation variables
 n_people = 138
 n_times = 56
-percent_missing = .3
+percent_missing = .2
 n_treatments = 2
 n_mediators = 2
 n_parameters = 6
@@ -194,17 +193,8 @@ resulttable = zcalc(codaSamples)
 true_values = c(mediator_effect_matrix, vec(treatment_effect_matrix), direct_effect)
 coda_answers = cbind(true_values = rep(true_values, length.out = nrow(resulttable)), resulttable)
 
-answers = list(coda_answers = coda_answers,
+answers = list(codaSamles = codaSamples,
+               coda_answers = coda_answers,
                run_time = run_time)
 
-assign(output_name, answers)
-
-save(output_name, file = paste0("answers_","informative=",informative_priors, "_diffuseness=",diffuseness,".RData"))
-
-# the dungeon
-
-for(this_person in 1:n_people){
-  for(this_time in times_missed[this_person, 1:n_miss[this_person]]){
-    print(M[this_person, this_time-1, 1:n_mediators])
-  }
-}
+save(answers, file = paste0("sim_", the_seed, "_informative=", informative_priors, "_diffuseness=", diffuseness, ".RData"))
