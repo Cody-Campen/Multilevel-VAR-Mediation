@@ -1,4 +1,4 @@
-#' This is the code which runs the JAGS model and calculates the ESS and Rhat
+#' This is the code which runs the JAGS model and calculates the answers
 #' Author: Cody A. Campen
 #' 
 #' Citation:
@@ -186,20 +186,36 @@ jagsModel = jags.model(file = "jags_model.R",
                        data = jags_data, 
                        inits = inits_list, 
                        n.chains = n_chains, 
-                       n.adapt = 4000)
+                       n.adapt = 100)
 
-update(jagsModel, n.iter = 15000)
+update(jagsModel, n.iter = 100)
 
-parameterlist = c("X_to_intercepts", "X_to_ARs", "X_to_CRs", "M_fixed_effect", "indirect_effect", "direct_effect")
+parameterlist = c("X_to_intercepts", 
+                  "X_to_ARs", 
+                  "X_to_CRs", 
+                  "M_fixed_effect", 
+                  "intercepts_indirect_effect", 
+                  "AR_indirect_effect",
+                  "CR_indirect_effect",
+                  "direct_effect")
 
 before_time = Sys.time()
-codaSamples = coda.samples(jagsModel, variable.names = parameterlist, n.iter = 20000, thin = 1) 
+codaSamples = coda.samples(jagsModel, variable.names = parameterlist, n.iter = 1000, thin = 1) 
 
 # ---- Collect our simulation performance statistics ----
 run_time = Sys.time() - before_time
 
 resulttable = zcalc(codaSamples)
-true_values = c(mediator_effect_matrix, vec(treatment_effect_matrix), direct_effect)
+
+# we're going to do this hard coded for now, just so we can submit this job before the end of day.
+true_values = c(0, 0, 1, 0, 0, 0, # AR indirect effects
+                0, 0, 0, 0, 0, -1, # CR indirect effects
+                1, 0, 1, 0, 0, 1, # the M fixed effects, which is different from M_fixed_effects above...
+                0, 0, 1, 0, 0, 0, # X to ARs
+                0, 0, 0, 0, 0, -1, # X to CRs
+                0, 0, 0, 0, 1, 0, # X to intercepts
+                0, 1, -1, # direct effects
+                0, 0, 0, 0, 1, 0)
 
 raw_bias = true_values - resulttable$mean
 names(raw_bias) = paste(rownames(resulttable),"raw_bias", sep = "_")

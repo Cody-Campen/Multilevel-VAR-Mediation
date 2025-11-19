@@ -71,13 +71,14 @@ model {
         M_CR[this_person, this_CR] ~ dnorm(M_CR.hat[this_CR, this_person], 2) # tighter for CRs
       }
       
+      # and combine everything into one person-specific vector so we can model M_fixed_effect as one vector in Y.hat
       parameter_matrix[1:n_parameters, this_person] = c(M_intercept[this_person, 1:n_mediators],
                                                         M_AR[this_person, 1:n_mediators],
                                                         M_CR[this_person, 1:n_mediators])
       
       # Then we can get the likelihood for the outcome as a function of the person-specific VAR parameters
       Y.hat[1, this_person] = M_fixed_effect[1:n_outcomes, 1:n_parameters] %*% parameter_matrix[1:n_parameters, this_person] + direct_effect[1:n_outcomes, 1:n_treatments] %*% X[this_person, 1:n_treatments]
-      Y[this_person, 1:n_outcomes] ~ dnorm(Y.hat[1:n_outcomes, this_person], Y.precision) # for univariate outcomes
+      Y[this_person, 1:n_outcomes] ~ dnorm(Y.hat[1:n_outcomes, this_person], Y.precision)
   }
   
   # ---- (1.2) level-1 likelihood functions ----
@@ -95,7 +96,6 @@ model {
     for(this_time in times_missed[this_person, 1:n_miss[this_person]]){
       M.hat[this_person, this_time, 1:n_mediators] = M_intercept[this_person, 1:n_mediators] + M_transition_matrix[this_person, 1:n_mediators, 1:n_mediators] %*% (M[this_person, this_time-1, 1:n_mediators] - M_intercept[this_person, 1:n_mediators])
 
-      # loop through each mediator
       for(this_mediator in 1:n_mediators){
         M[this_person, this_time, this_mediator] ~ dnorm(M.hat[this_person, this_time, this_mediator], pow(process_noise[this_mediator], -2))
       }
@@ -109,32 +109,36 @@ model {
     M_transition_matrix[this_person, 2, 1] = M_CR[this_person, 2]
   }
   
-  # ---- (1.2.2) Define the person-invariance M precision matrix ----
-  # Here, we're wanting to get all of the parts necessary to build the process noise precision matrix (which gets used on line 53 and 58 in the M likelihood)
+  for(this_outcome in 1:n_outcomes){
+    for(this_mediator in 1:n_mediators){
+      for(this_treatment in 1:n_treatments){
+        intercepts_indirect_effect[this_outcome, this_mediator, this_treatment] = M_fixed_effect[this_outcome, this_mediator] * X_to_intercepts[this_mediator, this_treatment]
+        AR_indirect_effect[this_outcome, this_mediator, this_treatment] = M_fixed_effect[this_outcome, n_mediators + this_mediator] * X_to_ARs[this_mediator, this_treatment]
+        CR_indirect_effect[this_outcome, this_mediator, this_treatment] = M_fixed_effect[this_outcome, 2 * n_mediators + this_mediator] * X_to_CRs[this_mediator, this_treatment]
+      }
+    }
+  }
   
-  # We begin by getting the process noise SDs and variances
+  # ---- (1.2.2) Define the person-invariance M precision matrix ----
+  
+  # Here, we're wanting to get all of the parts necessary (process noise, correlations and covariance matrix) to build the final process noise precision matrix
+  
   for(this_mediator in 1:n_mediators){
-    # first we transform the log process noise prior to get the real process noise
     process_noise[this_mediator] = exp(log_process_noise[this_mediator])
     
-    # and fill in the covariance diagonal with the variances while we're still in this loop
     M_covariance_matrix[this_mediator, this_mediator] = process_noise[this_mediator] * process_noise[this_mediator]
   }
   
-  # then we move on to the off diagonal elements of the process noise covariance matrix
   for(this_mediator in 1:(n_mediators-1)){
     for(other_mediator in (this_mediator+1):n_mediators){
-      # first we transform back the fisher_z prior to get the correlations between mediators
       correlation_matrix[this_mediator, other_mediator] = tanh(fisher_z[this_mediator, other_mediator])
       
-      # and use those correlations and the process noise to get the covariance between each mediator
       covariance_entry[this_mediator, other_mediator] = process_noise[this_mediator] * correlation_matrix[this_mediator, other_mediator] * process_noise[other_mediator]
       M_covariance_matrix[this_mediator, other_mediator] = covariance_entry[this_mediator, other_mediator]
       M_covariance_matrix[other_mediator, this_mediator] = covariance_entry[this_mediator, other_mediator]
     }
   }
   
-  # and finally, we invert our covariance matrix to get our desired precision matrix
   M.precision = inverse(M_covariance_matrix[1:n_mediators, 1:n_mediators])
 
 
@@ -163,8 +167,7 @@ model {
   Y.precision ~ dgamma(.1, .1) # for univariate outcomes
 
   # ---- (2.2) level-1 likelihood priors ----
-  # Because the intercept and transition matrix were handled at level-2, we only need to do the process noise priors
-  
+
   # the log of the person-invariant process noise
   for(this_mediator in 1:n_mediators){
     log_process_noise[this_mediator] ~ dnorm(0, 1)
