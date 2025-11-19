@@ -6,12 +6,13 @@ output: html_document
 This code should take all of the answers and store them in a big list.
 ```{r}
 answers_list = list()
-index = 0
+times = c()
 for(this_prior in c(TRUE, FALSE)){
   for(this_diffuseness in c(1, 2, 4, 8)){
     file_name = paste0("answers_informative=", this_prior, "_diffuseness=", this_diffuseness,".RData")
     load(file_name)
     answers_list[[file_name]] = answers$coda_answers
+    times[file_name] = answers$run_time
   }
 }
 ```
@@ -20,17 +21,17 @@ From this list, we're interested in estimate bias, ESS and $\hat{r}$ across cond
 
 ```{r}
 get_statistics = function(list){
-  abs_bias = abs(list$true_values[1:27] - list$mean[1:27])
+  RMSE = abs(list$true_values[1:27] - list$mean[1:27])
   ess = list$ESS[1:27]
   rhat = list$RHAT[1:27]
   
-  names(abs_bias) = rownames(list[1:27,])
+  names(RMSE) = rownames(list[1:27,])
   names(ess) = rownames(list[1:27,])
   names(rhat) = rownames(list[1:27,])
   
-  return(list(absolute_bias = sort(abs_bias, decreasing = T)[1:5],
-              expected_sample_size = sort(ess)[1:5],
-              r_hat = sort(rhat, decreasing = T)[1:5]))
+  return(list(RMSE = sort(RMSE, decreasing = T)[1:5],
+              ess = sort(ess)[1:5],
+              Rhat = sort(rhat, decreasing = T)[1:5]))
 }
 lapply(answers_list, get_statistics)
 ```

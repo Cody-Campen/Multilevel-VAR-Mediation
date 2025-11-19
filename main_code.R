@@ -17,31 +17,33 @@ the_seed = the_seed
 informative_priors = informative_priors # T/F whether or not to use informative priors
 diffuseness = diffuseness
 
+answers = NULL # this is the dataframe we will store the answers in
+
 # Dataset generation variables
-n_people = 138
+n_people = 10
 n_times = 56
 percent_missing = .2
 n_treatments = 2
 n_mediators = 2
 n_parameters = 6
 n_outcomes = 1
-treatment_effect_matrix = matrix(c(0, 0, 2,   # X -> M_1 intercept
+treatment_effect_matrix = matrix(c(0, 0, 1,   # X -> M_1 intercept
                                    0, 0, 0,   # X -> M_2 intercept
-                                   0, 0, 0,   # X -> M_1 autoregression
+                                   0, 1, 0,   # X -> M_1 autoregression
                                    0, 0, 0,   # X -> M_1 to M_2 crossregression
-                                   0, 0, 0,   # X -> M_2 to M_1 crossregression
-                                   0, .3, 0), # X -> M_2 autoregression
+                                   0, 0, -1,   # X -> M_2 to M_1 crossregression
+                                   0, 0, 0),  # X -> M_2 autoregression
                                  nrow = 6, ncol = n_treatments+1, byrow = T)
-mediator_effect_matrix = matrix(c(3,   # M_1 intercept -> Y
+mediator_effect_matrix = matrix(c(1,   # M_1 intercept -> Y
                                   0,   # M_2 intercept -> Y
-                                  0,   # M_1 autoregression -> Y
+                                  1,   # M_1 autoregression -> Y
                                   0,   # M_1 -> M_2 crossregression -> Y
-                                  -2,  # M_2 -> M_1 crossregression -> Y
+                                  1,   # M_2 -> M_1 crossregression -> Y
                                   0),  # M_2 autoregression -> Y
                                 nrow = 6, ncol = n_outcomes, byrow = T)
-direct_effect = matrix(c(0,   # Y intercept
-                         -3,  # X1 -> Y
-                         3),  # X2 -> Y
+direct_effect = matrix(c(0,  # Y intercept
+                         1,  # X1 -> Y
+                         -1), # X2 -> Y
                        nrow = n_treatments + 1, ncol = n_outcomes, byrow = T)
 parameter_matrix_covariance = diag(6)/10 
 Y_covariance = diag(n_outcomes)/1
@@ -71,7 +73,7 @@ parameter_matrix = data_info$parameter_matrix[1:n_parameters,]
 X = cbind(rep(1,n_people), as.matrix(dataset[dataset$time == 1,c("X1", "X2")], nrows=n_people))
 
 # Structure the mediator
-M <- array(as.matrix(dataset[,c("M1", "M2")]), dim = c(n_times, n_people, n_mediators)) |> aperm(c(2,1,3))
+M = array(as.matrix(dataset[,c("M1", "M2")]), dim = c(n_times, n_people, n_mediators)) |> aperm(c(2,1,3))
 # you want the dimensions to be structured: n_people, n_times, n_mediators
 
 # Structure the outcome
@@ -84,7 +86,7 @@ n_miss = vector(length = n_people)
 times_seen = matrix(NA, nrow = n_people, ncol = n_times)
 times_missed = matrix(NA, nrow = n_people, ncol = n_times)
 
-# and loop over each person to fill in their values
+# and loop over each person to fill in their values based on the missingness index, is_missing.
 is_missing = matrix(NA, nrow = n_people, ncol = n_times)
 for(this_person in 1:n_people){
   for(this_time in 2:n_times){
@@ -151,6 +153,7 @@ inits_list = create_inits(X_fixed_effect_mean = X_fixed_effect_mean,
                           n_mediators = n_mediators,
                           n_outcomes = n_outcomes)
 
+# ---- Define the JAGS data ----
 jags_data = list(X = X,
                  M = M,
                  Y = Y,
@@ -163,15 +166,22 @@ jags_data = list(X = X,
                  n_parameters = n_parameters,
                  n_mediators = n_mediators,
                  n_outcomes = n_outcomes,
-                 X_fixed_effect_mean = X_fixed_effect_mean,
-                 X_fixed_effect_precision = solve(X_fixed_effect_covariance), 
+                 X_to_intercepts.precision = matrix(c(1, 0, 0,
+                                                      0, 1, 0,
+                                                      0, 0, 1), nrow = 3, ncol = 3),
+                 X_to_ARs.precision = matrix(c(1, 0, 0,
+                                               0, 1, 0,
+                                               0, 0, 1), nrow = 3, ncol = 3),
+                 X_to_CRs.precision = matrix(c(1, 0, 0,
+                                               0, 1, 0,
+                                               0, 0, 1), nrow = 3, ncol = 3),
                  M_fixed_effect_mean = M_fixed_effect_mean,
                  M_fixed_effect_precision = solve(M_fixed_effect_covariance),
                  direct_effect_mean = direct_effect_mean,
                  direct_effect_precision = solve(direct_effect_covariance), 
                  parameter_rate_matrix = parameter_rate_matrix)
 
-
+# ---- Compile and run the model ---
 jagsModel = jags.model(file = "jags_model.R", 
                        data = jags_data, 
                        inits = inits_list, 
@@ -180,21 +190,63 @@ jagsModel = jags.model(file = "jags_model.R",
 
 update(jagsModel, n.iter = 15000)
 
-# warm up/burn in period 2500
-
-parameterlist = c("X_fixed_effect", "M_fixed_effect", "indirect_effect", "direct_effect")
+parameterlist = c("X_to_intercepts", "X_to_ARs", "X_to_CRs", "M_fixed_effect", "indirect_effect", "direct_effect")
 
 before_time = Sys.time()
 codaSamples = coda.samples(jagsModel, variable.names = parameterlist, n.iter = 20000, thin = 1) 
+
+# ---- Collect our simulation performance statistics ----
 run_time = Sys.time() - before_time
 
 resulttable = zcalc(codaSamples)
-
 true_values = c(mediator_effect_matrix, vec(treatment_effect_matrix), direct_effect)
-coda_answers = cbind(true_values = rep(true_values, length.out = nrow(resulttable)), resulttable)
 
-answers = list(codaSamles = codaSamples,
-               coda_answers = coda_answers,
-               run_time = run_time)
+raw_bias = true_values - resulttable$mean
+names(raw_bias) = paste(rownames(resulttable),"raw_bias", sep = "_")
+
+relative_bias = (true_values - resulttable$mean) / (true_values)
+names(relative_bias) = paste(rownames(resulttable),"relative_bias", sep = "_")
+
+rmse = sqrt((true_values - resulttable$mean)^2)
+names(rmse) = paste(rownames(resulttable), "rmse", sep = "_")
+
+sd = resulttable$sd
+names(sd) = paste(rownames(resulttable), "sd", sep = "_")
+
+CI_low = resulttable$`CrI 2.5%`
+names(CI_low) = paste(rownames(resulttable), "CI_low", sep = "_")
+
+CI_high = resulttable$`CrI 97.5%`
+names(CI_high) = paste(rownames(resulttable), "CI_high", sep = "_")
+
+coverage = (resulttable$`CrI 2.5%` < true_values & true_values < resulttable$`CrI 97.5%`)
+names(coverage) = paste(rownames(resulttable), "coverage", sep = "_")
+
+HDI_low = resulttable$`95% HDI_L`
+names(HDI_low) = paste(rownames(resulttable), "HDI_low", sep = "_")
+
+HDI_high = resulttable$`95% HDI_H`
+names(HDI_high) = paste(rownames(resulttable), "HDI_high", sep = "_")
+
+ess = resulttable$ESS
+names(ess) = paste(rownames(resulttable), "ess", sep = "_")
+
+rhat = resulttable$RHAT
+names(rhat) = paste(rownames(resulttable), "rhat", sep = "_")
+
+answers = rbind(answers, c(this_sim = the_seed,
+                           run_time = run_time,
+                           raw_bias,
+                           relative_bias,
+                           rmse,
+                           sd,
+                           CI_low,
+                           CI_high,
+                           coverage,
+                           HDI_low,
+                           HDI_high,
+                           ess,
+                           rhat))
 
 save(answers, file = paste0("sim_", the_seed, "_informative=", informative_priors, "_diffuseness=", diffuseness, ".RData"))
+
