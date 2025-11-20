@@ -62,7 +62,7 @@ model {
       # Then the ARs 
       M_AR.hat[1:n_mediators, this_person] = X_to_ARs[1:n_mediators, 1:n_treatments] %*% X[this_person, 1:n_treatments]
       for(this_AR in 1:n_mediators){
-        M_AR[this_person, this_AR] ~ dnorm(M_AR.hat[this_AR, this_person], 2) T(-1, 1) # tighter for ARs
+        M_AR[this_person, this_AR] ~ dnorm(M_AR.hat[this_ARm this_person], 2) T(-1, 1) # tighter for ARs
       }
       
       # and finally the CRs (hard coded for 2 mediators, for now)

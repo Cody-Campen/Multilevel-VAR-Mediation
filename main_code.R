@@ -186,9 +186,9 @@ jagsModel = jags.model(file = "jags_model.R",
                        data = jags_data, 
                        inits = inits_list, 
                        n.chains = n_chains, 
-                       n.adapt = 100)
+                       n.adapt = 4000)
 
-update(jagsModel, n.iter = 100)
+update(jagsModel, n.iter = 15000)
 
 parameterlist = c("X_to_intercepts", 
                   "X_to_ARs", 
@@ -200,7 +200,7 @@ parameterlist = c("X_to_intercepts",
                   "direct_effect")
 
 before_time = Sys.time()
-codaSamples = coda.samples(jagsModel, variable.names = parameterlist, n.iter = 1000, thin = 1) 
+codaSamples = coda.samples(jagsModel, variable.names = parameterlist, n.iter = 40000, thin = 1) 
 
 # ---- Collect our simulation performance statistics ----
 run_time = Sys.time() - before_time
@@ -217,13 +217,13 @@ true_values = c(0, 0, 1, 0, 0, 0, # AR indirect effects
                 0, 1, -1, # direct effects
                 0, 0, 0, 0, 1, 0)
 
-raw_bias = true_values - resulttable$mean
+raw_bias = resulttable$mean - true_values
 names(raw_bias) = paste(rownames(resulttable),"raw_bias", sep = "_")
 
-relative_bias = (true_values - resulttable$mean) / (true_values)
+relative_bias = (resulttable$mean - true_values) / (true_values)
 names(relative_bias) = paste(rownames(resulttable),"relative_bias", sep = "_")
 
-rmse = sqrt((true_values - resulttable$mean)^2)
+rmse = sqrt((resulttable$mean - true_values)^2)
 names(rmse) = paste(rownames(resulttable), "rmse", sep = "_")
 
 sd = resulttable$sd
