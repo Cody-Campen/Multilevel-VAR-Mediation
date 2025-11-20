@@ -20,7 +20,7 @@ diffuseness = diffuseness
 answers = NULL # this is the dataframe we will store the answers in
 
 # Dataset generation variables
-n_people = 10
+n_people = 138
 n_times = 56
 percent_missing = .2
 n_treatments = 2
