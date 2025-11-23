@@ -78,7 +78,7 @@ simulate_data = function(n_people = 100,
   # ...extracting the intercepts and coefficients in the parameter matrix into more interpretable units.
   m_intercepts = parameter_matrix[1:n_mediators,]
   
-  m_transition_matrix = array(parameter_matrix[(n_mediators+1):(n_mediators^2 + n_mediators),], 
+  m_transition_matrix = array(parameter_matrix[(n_mediators + 1):(n_mediators + n_mediators^2),], 
                               dim = c(n_mediators, n_mediators, n_people))
   
   # and get the final Pearson correlations in the transition matrix from the fisher z transforms

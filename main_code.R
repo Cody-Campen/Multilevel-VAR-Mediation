@@ -20,7 +20,7 @@ diffuseness = diffuseness
 answers = NULL # this is the dataframe we will store the answers in
 
 # Dataset generation variables
-n_people = 138
+n_people = 100
 n_times = 56
 percent_missing = .2
 n_treatments = 2
@@ -45,8 +45,8 @@ direct_effect = matrix(c(0,  # Y intercept
                          1,  # X1 -> Y
                          -1), # X2 -> Y
                        nrow = n_treatments + 1, ncol = n_outcomes, byrow = T)
-parameter_matrix_covariance = diag(6)/10 
-Y_covariance = diag(n_outcomes)/1
+parameter_matrix_covariance = diag(6)/100
+Y_covariance = diag(n_outcomes)/10
 
 # JAGS model variables
 n_chains = 2
@@ -140,16 +140,8 @@ if(informative_priors){
 }
 
 # ---- Set up the initial values ----
-inits_list = create_inits(X_fixed_effect_mean = X_fixed_effect_mean,
-                          X_fixed_effect_covariance = X_fixed_effect_covariance,
-                          parameter_rate_matrix = parameter_rate_matrix,
-                          M_fixed_effect_mean = M_fixed_effect_mean,
-                          M_fixed_effect_covariance = M_fixed_effect_covariance,
-                          direct_effect_mean = direct_effect_mean,
-                          direct_effect_covariance = direct_effect_covariance,
-                          n_chains = n_chains, 
-                          n_treatments = n_treatments, 
-                          n_parameters = n_parameters,
+inits_list = create_inits(n_chains = n_chains, 
+                          n_treatments = n_treatments+1, 
                           n_mediators = n_mediators,
                           n_outcomes = n_outcomes)
 
@@ -178,17 +170,16 @@ jags_data = list(X = X,
                  M_fixed_effect_mean = M_fixed_effect_mean,
                  M_fixed_effect_precision = solve(M_fixed_effect_covariance),
                  direct_effect_mean = direct_effect_mean,
-                 direct_effect_precision = solve(direct_effect_covariance), 
-                 parameter_rate_matrix = parameter_rate_matrix)
+                 direct_effect_precision = solve(direct_effect_covariance))
 
 # ---- Compile and run the model ---
 jagsModel = jags.model(file = "jags_model.R", 
                        data = jags_data, 
                        inits = inits_list, 
                        n.chains = n_chains, 
-                       n.adapt = 4000)
+                       n.adapt = 1000)
 
-update(jagsModel, n.iter = 15000)
+update(jagsModel, n.iter = 1000)
 
 parameterlist = c("X_to_intercepts", 
                   "X_to_ARs", 
@@ -200,7 +191,7 @@ parameterlist = c("X_to_intercepts",
                   "direct_effect")
 
 before_time = Sys.time()
-codaSamples = coda.samples(jagsModel, variable.names = parameterlist, n.iter = 40000, thin = 1) 
+codaSamples = coda.samples(jagsModel, variable.names = parameterlist, n.iter = 10000, thin = 1) 
 
 # ---- Collect our simulation performance statistics ----
 run_time = Sys.time() - before_time

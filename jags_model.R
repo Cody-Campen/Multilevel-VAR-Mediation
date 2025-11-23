@@ -23,17 +23,12 @@
 #' n_mediators: the number of mediator time series used
 #' n_parameters: the number of parameters estimated---which is equal to n_mediators + n_mediators^2.
 #' n_outcomes: the number of outcome variables used
-#' X_fixed_effect_mean: A matrix with dimensions n_parameters x n_treatments. The prior mean matrix for the X_fixed_effect coefficient matrix
-#' X_fixed_effect_cholesky: A matrix with dimensions n_treatment x n_treatments. The cholesky decomposition of the prior X_fixed_effects covariance matrix
-#' M_fixed_effect_mean: A matrix with dimensions n_outcomes x n_parameters The prior mean matrix for the M_fixed_effect coefficient matrix
-#' M_fixed_effect_cholesky: A matrix with dimensions n_parameters x n_parameters The cholesky decomposition of the prior M_fixed_effect covariance matrix
-#' direct_effect_mean: A matrix with dimensions n_outcomes x n_treatments The prior mean matrix for the direct_effect coefficient matrix
-#' direct_effect_cholesky: A matrix with dimensions n_treatment x n_treatment The cholesky decomposition of the prior direct_effect covariance matrix
-#' parameter_rate_matrix: A matrix with dimensions n_parameters x n_parameters. The rate matrix for the Wishart prior of parameter_matrix.precision.
 #' 
 #' ---- Parameters ----
 #' Level-2 parameters
-#' X_fixed_effect: The fixed effects coefficient matrix of X on the parameter matrix mean
+#' X_to_intercepts: The fixed effects coefficient matrix of the treatment to the mediator intercepts
+#' X_to_ARs: The fixed effects coefficient matrix of the treatment to the mediator autoregressive parameters in the transition matrix
+#' X_to_CRs: The fixed effects coefficient matrix of the treatment to the mediator crossregressive parameters in the transition matrix
 #' parameter_matrix: The parameter matrix for each participant. It contains the mediator intercepts and transition matrix parameters
 #' M_fixed_effect: The fixed effects coefficient matrix of the parameter matrix on the outcome. 
 #' direct_effect: The direct effect coefficient matrix of the treatment on the outcome.
@@ -62,7 +57,8 @@ model {
       # Then the ARs 
       M_AR.hat[1:n_mediators, this_person] = X_to_ARs[1:n_mediators, 1:n_treatments] %*% X[this_person, 1:n_treatments]
       for(this_AR in 1:n_mediators){
-        M_AR[this_person, this_AR] ~ dnorm(M_AR.hat[this_AR, this_person], 2) T(-1, 1) # tighter for ARs
+        M_AR_fisher[this_person, this_AR] ~ dnorm(M_AR.hat[this_AR, this_person], 2) # tighter for ARs
+        M_AR[this_person, this_AR] = tanh(M_AR_fisher[this_person,this_AR])
       }
       
       # and finally the CRs (hard coded for 2 mediators, for now)
@@ -73,7 +69,7 @@ model {
       
       # and combine everything into one person-specific vector so we can model M_fixed_effect as one vector in Y.hat
       parameter_matrix[1:n_parameters, this_person] = c(M_intercept[this_person, 1:n_mediators],
-                                                        M_AR[this_person, 1:n_mediators],
+                                                        M_AR_fisher[this_person, 1:n_mediators],
                                                         M_CR[this_person, 1:n_mediators])
       
       # Then we can get the likelihood for the outcome as a function of the person-specific VAR parameters
@@ -105,8 +101,8 @@ model {
     for(this_mediator in 1:n_mediators){
       M_transition_matrix[this_person, this_mediator, this_mediator] = M_AR[this_person, this_mediator]
     }
-    M_transition_matrix[this_person, 1, 2] = M_CR[this_person, 1]
-    M_transition_matrix[this_person, 2, 1] = M_CR[this_person, 2]
+    M_transition_matrix[this_person, 2, 1] = M_CR[this_person, 1] # M1 -> M2
+    M_transition_matrix[this_person, 1, 2] = M_CR[this_person, 2] # M2 -> M1
   }
   
   for(this_outcome in 1:n_outcomes){
@@ -144,7 +140,7 @@ model {
 
   # ---- (2.1) level-2 likelihood priors ----
   
-  # For the parameters used to generate the mediator (X_fixed_effect and parameter_matrix.precision)
+  # For the parameters used to generate the mediator from the treatment
   for(this_mediator in 1:n_mediators){
     X_to_intercepts[this_mediator, 1:n_treatments] ~ dmnorm(c(0,0,0), X_to_intercepts.precision)
     
@@ -153,8 +149,6 @@ model {
     X_to_CRs[this_mediator, 1:n_treatments] ~ dmnorm(c(0,0,0), X_to_CRs.precision)
   }
 
-  parameter_matrix.precision[1:n_parameters, 1:n_parameters] ~ dwish(parameter_rate_matrix, n_parameters+3)
-  
   # And for the parameters used to generate the outcome (M_fixed_effect, direct_effect, and Y.precision)
   for(this_outcome in 1:n_outcomes){
     M_fixed_effect[this_outcome, 1:n_parameters] ~ dmnorm(M_fixed_effect_mean[this_outcome, 1:n_parameters], M_fixed_effect_precision) 
