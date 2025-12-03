@@ -81,11 +81,6 @@ simulate_data = function(n_people = 100,
   m_transition_matrix = array(parameter_matrix[(n_mediators + 1):(n_mediators + n_mediators^2),], 
                               dim = c(n_mediators, n_mediators, n_people))
   
-  # and get the final Pearson correlations in the transition matrix from the fisher z transforms
-  for(this_mediator in 1:n_mediators){
-    m_transition_matrix[this_mediator, this_mediator, ] = tanh(m_transition_matrix[this_mediator, this_mediator, ])
-  }
-  
   # and of course, check for stability.
   for(this_person in 1:n_people) {
     eigen_values = eigen(m_transition_matrix[, , this_person])$values
@@ -100,15 +95,10 @@ simulate_data = function(n_people = 100,
         cat("\rRedrawing transition matrix for participant ",this_person, ". ", "Redraw number: ", counter, sep = "")
         
         # Resample the parametermatrix
-        parameter_matrix_error[ , this_person] = t(mvrnorm(n = 1, mu = rep(0, times = n_parameters), Sigma = parameter_matrix_covariance))
-        parameter_matrix[ , this_person] = treatment_effect_matrix %*% X[this_person, ] + parameter_matrix_error[ , this_person]
-        m_transition_matrix[ , , this_person] = array(parameter_matrix[(n_mediators+1):(n_mediators^2 + n_mediators), this_person], 
+        parameter_matrix_error[, this_person] = t(mvrnorm(n = 1, mu = rep(0, times = n_parameters), Sigma = parameter_matrix_covariance))
+        parameter_matrix[, this_person] = treatment_effect_matrix %*% X[this_person, ] + parameter_matrix_error[ , this_person]
+        m_transition_matrix[, , this_person] = array(parameter_matrix[(n_mediators+1):(n_mediators^2 + n_mediators), this_person], 
                                                   dim = c(n_mediators, n_mediators))
-        
-        # Transform the value from normal to Pearson correlations
-        for(this_mediator in 1:n_mediators){
-          m_transition_matrix[this_mediator, this_mediator, this_person] = tanh(m_transition_matrix[this_mediator, this_mediator, this_person])
-        }
         
         eigen_values = eigen(m_transition_matrix[, , this_person])$values
         max_eigen_value = max(Mod(eigen_values))

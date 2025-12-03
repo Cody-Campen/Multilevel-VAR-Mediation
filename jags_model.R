@@ -50,22 +50,15 @@ model {
       
       # So we get the intercepts
       M_intercept.hat[1:n_mediators, this_person] = X_to_intercepts[1:n_mediators, 1:n_treatments] %*% X[this_person, 1:n_treatments]
-      for(this_mediator in 1:n_mediators){
-        M_intercept[this_person, this_mediator] ~ dnorm(M_intercept.hat[this_mediator, this_person], 0.1) #diffuse for intercepts
-      }
+      M_intercept[this_person, 1:n_mediators] ~ dmnorm(M_intercept.hat[1:n_mediators, this_person], M_intercept.precision[1:n_mediators, 1:n_mediators]) #diffuse for intercepts
       
       # Then the ARs 
       M_AR.hat[1:n_mediators, this_person] = X_to_ARs[1:n_mediators, 1:n_treatments] %*% X[this_person, 1:n_treatments]
-      for(this_AR in 1:n_mediators){
-        M_AR_fisher[this_person, this_AR] ~ dnorm(M_AR.hat[this_AR, this_person], 2) # tighter for ARs
-        M_AR[this_person, this_AR] = tanh(M_AR_fisher[this_person,this_AR])
-      }
+      M_AR[this_person, 1:n_mediators] ~ dmnorm(M_AR.hat[1:n_mediators, this_person], M_AR.precision[1:n_mediators, 1:n_mediators]) # tighter for ARs
       
       # and finally the CRs (hard coded for 2 mediators, for now)
       M_CR.hat[1:n_mediators, this_person] = X_to_CRs[1:n_mediators, 1:n_treatments] %*% X[this_person, 1:n_treatments]
-      for(this_CR in 1:n_mediators){ # number of CRs = n_mediators, for this case where n_mediators = 2
-        M_CR[this_person, this_CR] ~ dnorm(M_CR.hat[this_CR, this_person], 2) # tighter for CRs
-      }
+      M_CR[this_person, 1:n_mediators] ~ dmnorm(M_CR.hat[1:n_mediators, this_person], M_CR.precision[1:n_mediators, 1:n_mediators]) # tighter for CRs
       
       # and combine everything into one person-specific vector so we can model M_fixed_effect as one vector in Y.hat
       parameter_matrix[1:n_parameters, this_person] = c(M_intercept[this_person, 1:n_mediators],
@@ -142,23 +135,27 @@ model {
   
   # For the parameters used to generate the mediator from the treatment
   for(this_mediator in 1:n_mediators){
-    X_to_intercepts[this_mediator, 1:n_treatments] ~ dmnorm(c(0,0,0), X_to_intercepts.precision)
+    X_to_intercepts[this_mediator, 1:n_treatments] ~ dmnorm(c(0,0,0), intercepts.precision)
     
-    X_to_ARs[this_mediator, 1:n_treatments] ~ dmnorm(c(0,0,0), X_to_ARs.precision)
+    X_to_ARs[this_mediator, 1:n_treatments] ~ dmnorm(c(0,0,0), transition_matrix.precision)
                                                      
-    X_to_CRs[this_mediator, 1:n_treatments] ~ dmnorm(c(0,0,0), X_to_CRs.precision)
+    X_to_CRs[this_mediator, 1:n_treatments] ~ dmnorm(c(0,0,0), transition_matrix.precision)
   }
 
   # And for the parameters used to generate the outcome (M_fixed_effect, direct_effect, and Y.precision)
   for(this_outcome in 1:n_outcomes){
-    M_fixed_effect[this_outcome, 1:n_parameters] ~ dmnorm(M_fixed_effect_mean[this_outcome, 1:n_parameters], M_fixed_effect_precision) 
+    M_fixed_effect[this_outcome, 1:n_parameters] ~ dmnorm(M_fixed_effect_mean[this_outcome, 1:n_parameters], intercepts.precision) 
   }
   
   for(this_outcome in 1:n_outcomes){ 
     direct_effect[this_outcome, 1:n_treatments] ~ dmnorm(direct_effect_mean[this_outcome, 1:n_treatments], direct_effect_precision)
   }
   
-  Y.precision ~ dgamma(.1, .1) # for univariate outcomes
+  intercepts.precision ~ dwish()
+  
+  transition_matrix.precision ~ dwish()
+  
+  Y.precision ~ dgamma(10, 10) # for univariate outcomes
 
   # ---- (2.2) level-1 likelihood priors ----
 
