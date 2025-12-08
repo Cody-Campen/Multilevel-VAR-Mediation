@@ -14,13 +14,11 @@ source("simulate_data.R")
 source("create_inits.R")
 
 the_seed = the_seed
-informative_priors = informative_priors # T/F whether or not to use informative priors
-diffuseness = diffuseness
 
 answers = NULL # this is the dataframe we will store the answers in
 
 # Dataset generation variables
-n_people = 138
+n_people = 10000
 n_times = 56
 percent_missing = .2
 n_treatments = 2
@@ -30,8 +28,8 @@ n_outcomes = 1
 treatment_effect_matrix = matrix(c(0, 0, 1,   # X -> M_1 intercept
                                    0, 0, 0,   # X -> M_2 intercept
                                    0, .5, 0,   # X -> M_1 autoregression
-                                   0, 0, 0,   # X -> M_1 to M_2 crossregression
-                                   0, 0, -.5,   # X -> M_2 to M_1 crossregression
+                                   0, .5, 0,   # X -> M_1 to M_2 crossregression
+                                   0, 0, -1,   # X -> M_2 to M_1 crossregression
                                    0, 0, 0),  # X -> M_2 autoregression
                                  nrow = 6, ncol = n_treatments+1, byrow = T)
 mediator_effect_matrix = matrix(c(1,   # M_1 intercept -> Y
@@ -45,7 +43,7 @@ direct_effect = matrix(c(0,  # Y intercept
                          1,  # X1 -> Y
                          -1), # X2 -> Y
                        nrow = n_treatments + 1, ncol = n_outcomes, byrow = T)
-parameter_matrix_covariance = diag(6)/10
+parameter_matrix_covariance = diag(c(10, 10, .25, .25, .25, .25))
 Y_covariance = diag(n_outcomes)/1
 
 # JAGS model variables
@@ -79,6 +77,10 @@ M = array(as.matrix(dataset[,c("M1", "M2")]), dim = c(n_times, n_people, n_media
 # Structure the outcome
 Y = as.matrix(dataset[dataset$time == 1, c("Y1")], nrows = n_people)
 
+#checks
+lm(parameter_matrix[1,] ~ X[,3])
+lm(parameter_matrix[3,] ~ X[,2])
+lm(parameter_matrix[5,] ~ X[,3])
 # Now, we create objects to handle the time indexing
 # Begin by creating objects to store our values
 n_seen = vector(length = n_people)
@@ -109,36 +111,6 @@ for(this_person in 1:n_people){
 
 # ---- Define the priors ----
 
-if(informative_priors){
-  # Effect of X on the parameter matrix
-  X_fixed_effect_mean = treatment_effect_matrix
-  X_fixed_effect_covariance = diag(diffuseness, n_treatments+1)
-  parameter_rate_matrix = diag(diffuseness, n_parameters)
-  
-  # Effect of the parameter matrix on the outcome
-  M_fixed_effect_mean = t(mediator_effect_matrix)
-  M_fixed_effect_covariance  = diag(diffuseness, n_parameters)
-  Y_rate_matrix = diag(diffuseness, n_parameters)
-  
-  # Effect of X on the outcome
-  direct_effect_mean = t(direct_effect)
-  direct_effect_covariance = diag(diffuseness, n_treatments+1)
-} else{
-  # Effect of X on the parameter matrix
-  X_fixed_effect_mean = matrix(rep(0, times = n_parameters * (n_treatments+1)), nrow = n_parameters, ncol = n_treatments+1, byrow = T)
-  X_fixed_effect_covariance = diag(diffuseness, n_treatments+1)
-  parameter_rate_matrix = diag(diffuseness, n_parameters)
-  
-  # Effect of the parameter matrix on the outcome
-  M_fixed_effect_mean = matrix(rep(0, times = n_parameters * n_outcomes), nrow = n_outcomes, ncol = n_parameters)
-  M_fixed_effect_covariance  = diag(diffuseness, n_parameters)
-  Y_rate_matrix = diag(diffuseness,n_outcomes)
-  
-  # Effect of X on the outcome
-  direct_effect_mean = matrix(rep(0, times = n_treatments+1), nrow = n_outcomes, ncol = n_treatments+1)
-  direct_effect_covariance = diag(diffuseness, n_treatments+1)
-}
-
 # ---- Set up the initial values ----
 inits_list = create_inits(n_chains = n_chains, 
                           n_treatments = n_treatments+1, 
@@ -158,12 +130,13 @@ jags_data = list(X = X,
                  n_parameters = n_parameters,
                  n_mediators = n_mediators,
                  n_outcomes = n_outcomes,
-                 X_to_intercepts.precision = diag(.1, n_treatments+1),
-                 X_to_ARs.precision = diag(1, n_treatments+1),
-                 X_to_CRs.precision =  diag(1, n_treatments+1),
-                 M_fixed_effect.precision = diag(.1, n_parameters),
+                 X_fixed_effect_mean = rep(0, times = n_treatments+1),
                  M_fixed_effect_mean = rep(0, times = n_parameters),
-                 direct_effect_mean = rep(0, times = n_treatments+1))
+                 direct_effect_mean = rep(0, times = n_treatments+1),
+                 X_fixed_effect.precision = diag(.25, 3),
+                 M_fixed_effect.precision = diag(.25, 6),
+                 direct_effect.precision = diag(.5, 3),
+                 parameter_matrix.rate = diag(c(10, 10, .5, .5, .5, .5)))
 
 # ---- Compile and run the model ---
 jagsModel = jags.model(file = "jags_model.R", 
@@ -172,19 +145,15 @@ jagsModel = jags.model(file = "jags_model.R",
                        n.chains = n_chains, 
                        n.adapt = 4000)
 
-update(jagsModel, n.iter = 10000)
+update(jagsModel, n.iter = 3000)
 
-parameterlist = c("X_to_intercepts", 
-                  "X_to_ARs", 
-                  "X_to_CRs", 
-                  "M_fixed_effect", 
-                  "intercepts_indirect_effect", 
-                  "AR_indirect_effect",
-                  "CR_indirect_effect",
-                  "direct_effect")
+parameterlist = c("X_fixed_effect",
+                  "M_fixed_effect",
+                  "direct_effect",
+                  "indirect_effect")
 
 before_time = Sys.time()
-codaSamples = coda.samples(jagsModel, variable.names = parameterlist, n.iter = 40000, thin = 1) 
+codaSamples = coda.samples(jagsModel, variable.names = parameterlist, n.iter = 10000, thin = 1) 
 
 # ---- Collect our simulation performance statistics ----
 run_time = Sys.time() - before_time
@@ -192,14 +161,14 @@ run_time = Sys.time() - before_time
 resulttable = zcalc(codaSamples)
 
 # we're going to do this hard coded for now, just so we can submit this job before the end of day.
-true_values = c(0, 0, 1, 0, 0, 0, # AR indirect effects
-                0, 0, 0, 0, 0, -1, # CR indirect effects
-                1, 0, 1, 0, 0, 1, # the M fixed effects, which is different from M_fixed_effects above...
-                0, 0, 1, 0, 0, 0, # X to ARs
-                0, 0, 0, 0, 0, -1, # X to CRs
-                0, 0, 0, 0, 1, 0, # X to intercepts
-                0, 1, -1, # direct effects
-                0, 0, 0, 0, 1, 0)
+true_values = c(1, 0, 1, 0, 0, 1, # M fixed
+                0, 0, 0, 0, 0, 0, # param intercepts
+                0, 0, .5, 0, 0, 0, # X1 fixed
+                1, 0, 0, 0, 0, -.5, # X2 fixed
+                0, 1, -1, # direct effect
+                0, 0, 0, 0, 0, 0,
+                0, 0, .5, 0, 0, 0,
+                1, 0, 0, 0, 0, -.5)
 
 raw_bias = resulttable$mean - true_values
 names(raw_bias) = paste(rownames(resulttable),"raw_bias", sep = "_")
@@ -248,5 +217,4 @@ answers = rbind(answers, c(this_sim = the_seed,
                            ess,
                            rhat))
 
-save(answers, file = paste0("sim_", the_seed, "_informative=", informative_priors, "_diffuseness=", diffuseness, ".RData"))
-
+save(answers, file = paste0("sim_", the_seed, ".RData"))

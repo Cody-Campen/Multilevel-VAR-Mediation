@@ -87,9 +87,9 @@ simulate_data = function(n_people = 100,
     max_eigen_value = max(Mod(eigen_values))
     
     # when a participant has an eigen value greater than .99, this resamples their transition matrix until its below .99
-    if(max_eigen_value >= .99){
+    if(max_eigen_value >= 1){
       counter = 0
-      while(max_eigen_value >= .99){
+      while(max_eigen_value >= 1){
         # Let the user know when a transition matrix gets redrawn + how many times its getting redrawn
         counter = 1 + counter
         cat("\rRedrawing transition matrix for participant ",this_person, ". ", "Redraw number: ", counter, sep = "")

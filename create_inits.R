@@ -34,24 +34,16 @@ create_inits = function(n_chains,
   for(this_chain in 1:n_chains){
     # Sample the initial values for the parameters in the level-2 model...
     # ...for the regression model for M...
-    X_to_intercepts = matrix(runif(n_treatments*n_mediators, -3, 3),
-                             nrow = n_mediators,
-                             ncol = n_treatments)
-    
-    X_to_ARs = matrix(runif(n_treatments*n_mediators, -1, 1),
-                      nrow = n_mediators,
-                      ncol = n_treatments)
-
-    X_to_CRs = matrix(runif(n_treatments*n_mediators, -1, 1),
-                      nrow = n_mediators,
-                      ncol = n_treatments)
+    X_fixed_effect = matrix(runif((n_mediators * 3) * n_treatments, -1, 1),
+                           nrow = (n_mediators * 3),
+                           ncol = n_treatments)
     
     # ...and the regression model for Y.
-    M_fixed_effect = matrix(runif(n_outcomes * (n_mediators * 3), -3, 3),
+    M_fixed_effect = matrix(runif(n_outcomes * (n_mediators * 3), -2, 2),
                             nrow = n_outcomes,
                             ncol = (n_mediators * 3))
       
-    direct_effect = matrix(runif(n_outcomes * n_treatments, -3, 3),
+    direct_effect = matrix(runif(n_outcomes * n_treatments, -2, 2),
                            nrow = n_outcomes,
                            ncol = n_treatments)
 
@@ -68,9 +60,7 @@ create_inits = function(n_chains,
     }
     
     # And finally, organize the samples in a list to pass onto the larger list of initial values
-    list_to_add = list(X_to_intercepts = X_to_intercepts,
-                       X_to_ARs = X_to_ARs,
-                       X_to_CRs = X_to_CRs,
+    list_to_add = list(X_fixed_effect = X_fixed_effect,
                        M_fixed_effect = M_fixed_effect,
                        direct_effect = direct_effect,
                        Y.precision = Y.precision,

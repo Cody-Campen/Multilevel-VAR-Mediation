@@ -1,0 +1,27 @@
+---
+title: "HPC Answers Report: mean zero priors, diffuseness = .25"
+author: "Cody Campen"
+date: "11/17/2025"
+---
+We begin by combining the results from each HPC job into one dataset
+```{r}
+seeds = 1:200
+priors = FALSE
+diffuseness = .25
+conditions = expand.grid(this_seed = seeds,
+                         this_prior = priors,
+                         this_diffuseness = diffuseness)
+
+file_names = paste0("sim_", conditions$this_seed, "_informative=", conditions$this_prior, "_diffuseness=", conditions$this_diffuseness, ".RData")
+
+all_results = NULL
+for(this_file in file_names){
+  load(this_file)
+  all_results = rbind(all_results, answers) 
+}
+head(all_results)
+```
+Now that we have our combined dataset of each job, let's see some simple summary statistics
+```{r}
+sapply(all_results, mean)
+```
