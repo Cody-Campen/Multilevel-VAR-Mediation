@@ -143,9 +143,9 @@ jagsModel = jags.model(file = "jags_model.R",
                        data = jags_data, 
                        inits = inits_list, 
                        n.chains = n_chains, 
-                       n.adapt = 40)
+                       n.adapt = 4000)
 
-update(jagsModel, n.iter = 30)
+update(jagsModel, n.iter = 3000)
 
 parameterlist = c("X_to_intercept",
                   "X_to_AR",
@@ -162,7 +162,7 @@ parameterlist = c("X_to_intercept",
                   "M.precision")
 
 before_time = Sys.time()
-codaSamples = coda.samples(jagsModel, variable.names = parameterlist, n.iter = 800, thin = 1) 
+codaSamples = coda.samples(jagsModel, variable.names = parameterlist, n.iter = 8000, thin = 1) 
 run_time = Sys.time() - before_time
 
 sample_names = varnames(codaSamples)
@@ -179,17 +179,17 @@ resulttable = zcalc(codaSamples[, ordered_parameters])
 
 # we're going to do this hard coded for now, just so we can submit this job before the end of day.
 true_values = c(treatment_effect_matrix[1:2, ],
-                treatment_effect_matrix[3:4, ],
-                treatment_effect_matrix[5:6, ],
-                parameter_matrix_covariance,
+                # treatment_effect_matrix[3:4, ],
+                # treatment_effect_matrix[5:6, ],
+                parameter_matrix_covariance[1:2, 1:2],
                 mediator_effect_matrix[1:2, ],
-                mediator_effect_matrix[c(3, 6), ],
-                mediator_effect_matrix[4:5, ],
+                # mediator_effect_matrix[c(3, 6), ],
+                # mediator_effect_matrix[4:5, ],
                 direct_effect,
                 Y_covariance^(-2),
                 treatment_effect_matrix[1:2, ] * mediator_effect_matrix[1:2,],
-                treatment_effect_matrix[3:4, ] * mediator_effect_matrix[c(3, 6), ],
-                treatment_effect_matrix[5:6, ] * mediator_effect_matrix[4:5, ],
+                # treatment_effect_matrix[3:4, ] * mediator_effect_matrix[c(3, 6), ],
+                # treatment_effect_matrix[5:6, ] * mediator_effect_matrix[4:5, ],
                 m_covariance^(-2))
                 
 raw_bias = resulttable$mean - true_values
