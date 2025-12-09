@@ -48,7 +48,10 @@ simulate_data = function(n_people = 100,
                          parameter_matrix_covariance = diag(6),
                          Y_covariance = diag(1),
                          m_standard_deviations = c(1, 1),
-                         m_correlations = .2){
+                         m_correlations = matrix(c(1, .2,
+                                                   .2, 1),
+                                                   nrow = 2, ncol = 2))
+{
   # ---- Errors and warnings ----
   
   # Checking on the between_coefficient_matrix
@@ -92,7 +95,7 @@ simulate_data = function(n_people = 100,
       while(max_eigen_value >= 1){
         # Let the user know when a transition matrix gets redrawn + how many times its getting redrawn
         counter = 1 + counter
-        cat("\rRedrawing transition matrix for participant ",this_person, ". ", "Redraw number: ", counter, sep = "")
+        cat("\rRedrawing transition matrix for participant ", this_person, ". ", "Redraw number: ", counter, sep = "")
         
         # Resample the parametermatrix
         parameter_matrix_error[, this_person] = t(mvrnorm(n = 1, mu = rep(0, times = n_parameters), Sigma = parameter_matrix_covariance))
@@ -107,31 +110,25 @@ simulate_data = function(n_people = 100,
     }
   }
   
-  m_noise_covariance = array(NA, dim = c(n_mediators, n_mediators))
-  m_process_noise_matrix = array(NA, dim = c(n_times, n_mediators))
-  
-################################################################################
-#### This next chunk of code can ONLY accommodate 2 mediators at the moment ####
-########### A change must be made to accommodate a different amount. ###########
-################################################################################
-  off_diagonal_index = !diag(nrow(m_noise_covariance))  
-  diag(m_noise_covariance[ , ]) = m_standard_deviations^2
-  m_noise_covariance[,][off_diagonal_index] =  prod(m_standard_deviations) * m_correlations
-  m_process_noise_matrix[,] = mvrnorm(n = n_times, mu = rep(0, times = n_mediators), Sigma = m_noise_covariance)
+
+  m_noise_covariance = diag(m_standard_deviations) %*% m_correlations %*% diag(m_standard_deviations)
+    
+  m_process_noise_matrix = array(NA, dim = c(n_times, n_mediators, n_people))
+  m_process_noise_matrix[, ,] = mvrnorm(n = n_times*n_people, mu = rep(0, times = n_mediators), Sigma = m_noise_covariance)
 
   
   # Third, create a storage objects for the mediator time series...
   M = array(NA, dim = c(n_times, n_mediators, n_people)) # (timepoints x mediators x subjects)
   
   # ...and set the initial values for each subject.
-  M[1, , ] = m_intercepts + m_process_noise_matrix[1,]
+  M[1, , ] = m_intercepts + m_process_noise_matrix[1, , ]
   
   # fourth, loop over timepoints to fill in participant's values for each their mediating time series
   for(this_person in 1:n_people){
     for(this_time in 2:n_times){
         M[this_time, ,this_person] = m_intercepts[, this_person] + 
                           m_transition_matrix[, , this_person] %*% (M[this_time - 1, ,this_person] - m_intercepts[, this_person]) + 
-                          m_process_noise_matrix[this_time, ]
+                          m_process_noise_matrix[this_time, , this_person]
     }
   }
   

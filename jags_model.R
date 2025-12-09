@@ -47,17 +47,30 @@ model {
   # ---- (1.1) level-2 likelihood functions ----
   for(this_person in 1:n_people){
       # First we start out for the likelihood for the person-specific VAR parameters as a function of their treatment, X.
-      parameter_matrix.hat[1:n_parameters, this_person] = X_fixed_effect[1:n_parameters, 1:n_treatments] %*% X[this_person, 1:n_treatments]
+      M_intercept.hat[1:n_mediators, this_person] = X_to_intercept[1:n_mediators, 1:n_treatments] %*% X[this_person, 1:n_treatments]
+      # M_AR.hat[1:n_mediators, this_person] = X_to_AR[1:n_mediators, 1:n_treatments] %*% X[this_person, 1:n_treatments]
+      # M_CR.hat[1:n_mediators, this_person] = X_to_CR[1:n_mediators, 1:n_treatments] %*% X[this_person, 1:n_treatments]
+ 
+      # Then sample from the vector of all parameters so that we can have covariances between intercepts, ARs and CRs
+      parameter_matrix.hat[1:n_parameters, this_person] = c(M_intercept.hat[1:n_mediators, this_person]
+                                                            # M_AR.hat[1:n_mediators, this_person], 
+                                                            # M_CR.hat[1:n_mediators, this_person]
+                                                            )
+      
       parameter_matrix[1:n_parameters, this_person] ~ dmnorm(parameter_matrix.hat[1:n_parameters, this_person], parameter_matrix.precision[1:n_parameters, 1:n_parameters])
       
-      # Then we can get the likelihood for the outcome as a function of the person-specific VAR parameters
-      Y.hat[1, this_person] = M_fixed_effect[1:n_outcomes, 1:n_parameters] %*% parameter_matrix[1:n_parameters, this_person] + direct_effect[1:n_outcomes, 1:n_treatments] %*% X[this_person, 1:n_treatments]
-      Y[this_person, 1:n_outcomes] ~ dnorm(Y.hat[1:n_outcomes, this_person], Y.precision)
-      
-      # Rename each parameter for easy tracking in the level-1 model. (THIS ONLY WORKS WITH 2 MEDIATORS) 
+      # Rename each parameter for easy tracking in the level-1 model.
       M_intercept[this_person, 1:n_mediators] = parameter_matrix[1:2, this_person]
-      M_AR[this_person, 1:n_mediators] = parameter_matrix[3:4, this_person]
-      M_CR[this_person, 1:n_mediators] = parameter_matrix[5:6, this_person]
+      # M_AR[this_person, 1:n_mediators] = parameter_matrix[3:4, this_person]
+      # M_CR[this_person, 1:n_mediators] = parameter_matrix[5:6, this_person]
+
+      # Now we can get the likelihood for the outcome as a function of the person-specific VAR parameters
+      Y.hat[1, this_person] = intercept_to_Y[1:n_outcomes, 1:n_mediators] %*% M_intercept[this_person, 1:n_mediators] + 
+                              # AR_to_Y[1:n_outcomes, 1:n_mediators] %*% M_AR[this_person, 1:n_mediators] +
+                              # CR_to_Y[1:n_outcomes, 1:n_mediators] %*% M_CR[this_person, 1:n_mediators] +
+                              direct_effect[1:n_outcomes, 1:n_treatments] %*% X[this_person, 1:n_treatments]
+      
+      Y[this_person, 1:n_outcomes] ~ dnorm(Y.hat[1:n_outcomes, this_person], Y.precision)
   }
   
   # ---- (1.2) level-1 likelihood functions ----
@@ -74,24 +87,26 @@ model {
     # ...and for the missing values.
     for(this_time in times_missed[this_person, 1:n_miss[this_person]]){
       M.hat[this_person, this_time, 1:n_mediators] = M_intercept[this_person, 1:n_mediators] + M_transition_matrix[this_person, 1:n_mediators, 1:n_mediators] %*% (M[this_person, this_time-1, 1:n_mediators] - M_intercept[this_person, 1:n_mediators])
-
+      
       for(this_mediator in 1:n_mediators){
-        M[this_person, this_time, this_mediator] ~ dnorm(M.hat[this_person, this_time, this_mediator], pow(process_noise[this_mediator], -2))
+        M[this_person, this_time, this_mediator] ~ dnorm(M.hat[this_person, this_time, this_mediator], process_noise[this_mediator]^(-2))
       }
     }
   
     # ---- (1.2.1) Map the ARs and CRs from the level-2 parameter matrix onto the VAR transition matrix ----
     for(this_mediator in 1:n_mediators){
-      M_transition_matrix[this_person, this_mediator, this_mediator] = M_AR[this_person, this_mediator]
+      M_transition_matrix[this_person, this_mediator, this_mediator] ~ dnorm(0, 1) T(-1.5, 1.5) #= M_AR[this_person, this_mediator]
     }
-    M_transition_matrix[this_person, 2, 1] = M_CR[this_person, 1] # M1 -> M2
-    M_transition_matrix[this_person, 1, 2] = M_CR[this_person, 2] # M2 -> M1
+    M_transition_matrix[this_person, 2, 1] ~ dnorm(0, 1) #= M_CR[this_person, 1] # M1 -> M2
+    M_transition_matrix[this_person, 1, 2] ~ dnorm(0, 1) #= M_CR[this_person, 2] # M2 -> M1
   }
   
   for(this_outcome in 1:n_outcomes){
-    for(this_parameter in 1:n_parameters){
+    for(this_parameter in 1:n_mediators){
       for(this_treatment in 1:n_treatments){
-        indirect_effect[this_outcome, this_parameter, this_treatment] = M_fixed_effect[this_outcome, this_parameter] * X_fixed_effect[this_parameter, this_treatment]
+        intercept_indirect_effect[this_outcome, this_parameter, this_treatment] = X_to_intercept[this_parameter, this_treatment] * intercept_to_Y[this_outcome, this_parameter]
+        # AR_indirect_effect[this_outcome, this_parameter, this_treatment] = X_to_AR[this_parameter, this_treatment] * AR_to_Y[this_outcome, this_parameter]
+        # CR_indirect_effect[this_outcome, this_parameter, this_treatment] = X_to_CR[this_parameter, this_treatment] * CR_to_Y[this_outcome, this_parameter]
       }
     }
   }
@@ -121,22 +136,23 @@ model {
   # ---- (2.1) level-2 likelihood priors ----
   
   # For the fixed effect of the treatment on the VAR parameters...
-  for(this_parameter in 1:n_parameters){
-   X_fixed_effect[this_parameter, 1:n_treatments] ~ dmnorm(X_fixed_effect_mean[1:n_treatments], X_fixed_effect.precision[1:n_treatments, 1:n_treatments])
+  for(this_parameter in 1:n_mediators){
+    X_to_intercept[this_parameter, 1:n_treatments] ~ dmnorm(X_fixed_effect_mean[1:n_treatments], X_to_intercept.precision[1:n_treatments, 1:n_treatments])
+    # X_to_AR[this_parameter, 1:n_treatments] ~ dmnorm(X_fixed_effect_mean[1:n_treatments], X_to_AR.precision[1:n_treatments, 1:n_treatments])
+    # X_to_CR[this_parameter, 1:n_treatments] ~ dmnorm(X_fixed_effect_mean[1:n_treatments], X_to_CR.precision[1:n_treatments, 1:n_treatments])
   }
   
   parameter_matrix.precision ~ dwish(parameter_matrix.rate[1:n_parameters, 1:n_parameters], 6)
   
   # ...and for the fixed effect of the treatment and parameters on the outcome.
   for(this_outcome in 1:n_outcomes){
-    M_fixed_effect[this_outcome, 1:n_parameters] ~ dmnorm(M_fixed_effect_mean[1:n_parameters], M_fixed_effect.precision[1:n_parameters, 1:n_parameters]) 
-  }
-  
-  for(this_outcome in 1:n_outcomes){ 
+    intercept_to_Y[this_outcome, 1:n_mediators] ~ dmnorm(M_fixed_effect_mean[1:n_mediators], M_fixed_effect.precision[1:n_mediators, 1:n_mediators]) 
+    # AR_to_Y[this_outcome, 1:n_mediators] ~ dmnorm(M_fixed_effect_mean[1:n_mediators], M_fixed_effect.precision[1:n_mediators, 1:n_mediators]) 
+    # CR_to_Y[this_outcome, 1:n_mediators] ~ dmnorm(M_fixed_effect_mean[1:n_mediators], M_fixed_effect.precision[1:n_mediators, 1:n_mediators]) 
     direct_effect[this_outcome, 1:n_treatments] ~ dmnorm(direct_effect_mean[1:n_treatments], direct_effect.precision[1:n_treatments, 1:n_treatments])
   }
   
-  Y.precision ~ dgamma(10, 10) # for univariate outcomes
+  Y.precision ~ dgamma(1, 1) # for univariate outcomes
 
   # ---- (2.2) level-1 likelihood priors ----
 

@@ -70,11 +70,11 @@ ggplot(DE, aes(value)) +
 # These make me want to check for mistakes in the data generation function. 
 
 # ---- Coverage ----
-coverage = column_means[c("X_to_intercepts[1,3]_coverage",
+coverage = column_means[c("X_fixed_effect[1,3]_coverage",
                          "M_fixed_effect[1,1]_coverage",
-                         "X_to_ARs[1,2]_coverage",
+                         "X_fixed_effect[3,2]_coverage",
                          "M_fixed_effect[1,3]_coverage",
-                         "X_to_CRs[2,3]_coverage",
+                         "X_fixed_effect[6,3]_coverage",
                          "M_fixed_effect[1,6]_coverage",
                          "direct_effect[1,2]_coverage",
                          "direct_effect[1,3]_coverage")]
@@ -87,6 +87,23 @@ ggplot(coverage_df, aes(x = parameter, y = rate)) +
   geom_hline(yintercept = .95, linetype = "dashed", color = "red") +
   ylim(0, 1) +
   ggtitle("Coverage Rates")
+
+CI_widths = column_means[c("X_fixed_effect[1,3]_CI_high",
+                           "M_fixed_effect[1,1]_CI_high",
+                           "X_fixed_effect[3,2]_CI_high",
+                           "M_fixed_effect[1,3]_CI_high",
+                           "X_fixed_effect[6,3]_CI_high",
+                           "M_fixed_effect[1,6]_CI_high",
+                           "direct_effect[1,2]_CI_high",
+                           "direct_effect[1,3]_CI_high")] -
+            column_means[c("X_fixed_effect[1,3]_CI_low",
+                           "M_fixed_effect[1,1]_CI_low",
+                           "X_fixed_effect[3,2]_CI_low",
+                           "M_fixed_effect[1,3]_CI_low",
+                           "X_fixed_effect[6,3]_CI_low",
+                           "M_fixed_effect[1,6]_CI_low",
+                           "direct_effect[1,2]_CI_low",
+                           "direct_effect[1,3]_CI_low")]
 
 ESS = answers_matrix[, c("X_to_intercepts[1,3]_ess",
                         "M_fixed_effect[1,1]_ess",

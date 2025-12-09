@@ -18,18 +18,18 @@ the_seed = the_seed
 answers = NULL # this is the dataframe we will store the answers in
 
 # Dataset generation variables
-n_people = 10000
+n_people = 30
 n_times = 56
 percent_missing = .2
 n_treatments = 2
 n_mediators = 2
-n_parameters = 6
+n_parameters = 2
 n_outcomes = 1
 treatment_effect_matrix = matrix(c(0, 0, 1,   # X -> M_1 intercept
                                    0, 0, 0,   # X -> M_2 intercept
-                                   0, .5, 0,   # X -> M_1 autoregression
-                                   0, .5, 0,   # X -> M_1 to M_2 crossregression
-                                   0, 0, -1,   # X -> M_2 to M_1 crossregression
+                                   0, .2, 0,   # X -> M_1 autoregression
+                                   0, -.3, 0,   # X -> M_1 to M_2 crossregression
+                                   0, 0, -.2,   # X -> M_2 to M_1 crossregression
                                    0, 0, 0),  # X -> M_2 autoregression
                                  nrow = 6, ncol = n_treatments+1, byrow = T)
 mediator_effect_matrix = matrix(c(1,   # M_1 intercept -> Y
@@ -43,8 +43,13 @@ direct_effect = matrix(c(0,  # Y intercept
                          1,  # X1 -> Y
                          -1), # X2 -> Y
                        nrow = n_treatments + 1, ncol = n_outcomes, byrow = T)
-parameter_matrix_covariance = diag(c(10, 10, .25, .25, .25, .25))
+parameter_matrix_covariance = diag(c(10, 10, .1, .1, .1, .1))
 Y_covariance = diag(n_outcomes)/1
+m_standard_deviations = c(1, 1)
+m_correlations = matrix(c(1, .2,
+                          .2, 1),
+                        nrow = 2, ncol = 2)
+m_covariance = diag(m_standard_deviations) %*% m_correlations %*% diag(m_standard_deviations)
 
 # JAGS model variables
 n_chains = 2
@@ -77,10 +82,6 @@ M = array(as.matrix(dataset[,c("M1", "M2")]), dim = c(n_times, n_people, n_media
 # Structure the outcome
 Y = as.matrix(dataset[dataset$time == 1, c("Y1")], nrows = n_people)
 
-#checks
-lm(parameter_matrix[1,] ~ X[,3])
-lm(parameter_matrix[3,] ~ X[,2])
-lm(parameter_matrix[5,] ~ X[,3])
 # Now, we create objects to handle the time indexing
 # Begin by creating objects to store our values
 n_seen = vector(length = n_people)
@@ -108,9 +109,6 @@ for(this_person in 1:n_people){
   times_seen[this_person, 1:n_seen[this_person]] = which(is_missing[this_person, ] %in% 0)
 }
 
-
-# ---- Define the priors ----
-
 # ---- Set up the initial values ----
 inits_list = create_inits(n_chains = n_chains, 
                           n_treatments = n_treatments+1, 
@@ -133,43 +131,67 @@ jags_data = list(X = X,
                  X_fixed_effect_mean = rep(0, times = n_treatments+1),
                  M_fixed_effect_mean = rep(0, times = n_parameters),
                  direct_effect_mean = rep(0, times = n_treatments+1),
-                 X_fixed_effect.precision = diag(.25, 3),
-                 M_fixed_effect.precision = diag(.25, 6),
-                 direct_effect.precision = diag(.5, 3),
-                 parameter_matrix.rate = diag(c(10, 10, .5, .5, .5, .5)))
+                 X_to_intercept.precision = diag(.01, 3),
+                 X_to_AR.precision = diag(1, 3),
+                 X_to_CR.precision = diag(1, 3),
+                 M_fixed_effect.precision = diag(.01, 6),
+                 direct_effect.precision = diag(.01, 3),
+                 parameter_matrix.rate = diag(c(15, 15, .5, .5, .5, .5)))
 
 # ---- Compile and run the model ---
 jagsModel = jags.model(file = "jags_model.R", 
                        data = jags_data, 
                        inits = inits_list, 
                        n.chains = n_chains, 
-                       n.adapt = 4000)
+                       n.adapt = 40)
 
-update(jagsModel, n.iter = 3000)
+update(jagsModel, n.iter = 30)
 
-parameterlist = c("X_fixed_effect",
-                  "M_fixed_effect",
+parameterlist = c("X_to_intercept",
+                  "X_to_AR",
+                  "X_to_CR",
+                  "parameter_matrix.precision",
+                  "intercept_to_Y",
+                  "AR_to_Y",
+                  "CR_to_Y",
                   "direct_effect",
-                  "indirect_effect")
+                  "Y.precision",
+                  "intercept_indirect_effect",
+                  "AR_indirect_effect",
+                  "CR_indirect_effect",
+                  "M.precision")
 
 before_time = Sys.time()
-codaSamples = coda.samples(jagsModel, variable.names = parameterlist, n.iter = 10000, thin = 1) 
-
-# ---- Collect our simulation performance statistics ----
+codaSamples = coda.samples(jagsModel, variable.names = parameterlist, n.iter = 800, thin = 1) 
 run_time = Sys.time() - before_time
 
-resulttable = zcalc(codaSamples)
+sample_names = varnames(codaSamples)
+
+ordered_parameters = c()
+for(this_parameter in parameterlist){
+  matching_parameters = grep(paste0("^", this_parameter, "(\\[|$)"), sample_names, value = TRUE)
+  ordered_parameters = c(ordered_parameters, matching_parameters)
+}
+
+# ---- Collect our simulation performance statistics ----
+
+resulttable = zcalc(codaSamples[, ordered_parameters])
 
 # we're going to do this hard coded for now, just so we can submit this job before the end of day.
-true_values = c(1, 0, 1, 0, 0, 1, # M fixed
-                0, 0, 0, 0, 0, 0, # param intercepts
-                0, 0, .5, 0, 0, 0, # X1 fixed
-                1, 0, 0, 0, 0, -.5, # X2 fixed
-                0, 1, -1, # direct effect
-                0, 0, 0, 0, 0, 0,
-                0, 0, .5, 0, 0, 0,
-                1, 0, 0, 0, 0, -.5)
-
+true_values = c(treatment_effect_matrix[1:2, ],
+                treatment_effect_matrix[3:4, ],
+                treatment_effect_matrix[5:6, ],
+                parameter_matrix_covariance,
+                mediator_effect_matrix[1:2, ],
+                mediator_effect_matrix[c(3, 6), ],
+                mediator_effect_matrix[4:5, ],
+                direct_effect,
+                Y_covariance^(-2),
+                treatment_effect_matrix[1:2, ] * mediator_effect_matrix[1:2,],
+                treatment_effect_matrix[3:4, ] * mediator_effect_matrix[c(3, 6), ],
+                treatment_effect_matrix[5:6, ] * mediator_effect_matrix[4:5, ],
+                m_covariance^(-2))
+                
 raw_bias = resulttable$mean - true_values
 names(raw_bias) = paste(rownames(resulttable),"raw_bias", sep = "_")
 
