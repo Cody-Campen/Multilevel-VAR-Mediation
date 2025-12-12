@@ -18,25 +18,25 @@ the_seed = the_seed
 answers = NULL # this is the dataframe we will store the answers in
 
 # Dataset generation variables
-n_people = 30
+n_people = 138
 n_times = 56
 percent_missing = .2
 n_treatments = 2
 n_mediators = 2
-n_parameters = 2
+n_parameters = 4
 n_outcomes = 1
 treatment_effect_matrix = matrix(c(0, 0, 1,   # X -> M_1 intercept
                                    0, 0, 0,   # X -> M_2 intercept
                                    0, .2, 0,   # X -> M_1 autoregression
-                                   0, -.3, 0,   # X -> M_1 to M_2 crossregression
-                                   0, 0, -.2,   # X -> M_2 to M_1 crossregression
+                                   0, 0, 0,   # X -> M_1 to M_2 crossregression
+                                   0, 0, 0,   # X -> M_2 to M_1 crossregression #-.2
                                    0, 0, 0),  # X -> M_2 autoregression
                                  nrow = 6, ncol = n_treatments+1, byrow = T)
 mediator_effect_matrix = matrix(c(1,   # M_1 intercept -> Y
                                   0,   # M_2 intercept -> Y
                                   1,   # M_1 autoregression -> Y
                                   0,   # M_1 -> M_2 crossregression -> Y
-                                  1,   # M_2 -> M_1 crossregression -> Y
+                                  0,   # M_2 -> M_1 crossregression -> Y # 1
                                   0),  # M_2 autoregression -> Y
                                 nrow = 6, ncol = n_outcomes, byrow = T)
 direct_effect = matrix(c(0,  # Y intercept
@@ -131,21 +131,42 @@ jags_data = list(X = X,
                  X_fixed_effect_mean = rep(0, times = n_treatments+1),
                  M_fixed_effect_mean = rep(0, times = n_parameters),
                  direct_effect_mean = rep(0, times = n_treatments+1),
-                 X_to_intercept.precision = diag(.01, 3),
-                 X_to_AR.precision = diag(1, 3),
-                 X_to_CR.precision = diag(1, 3),
-                 M_fixed_effect.precision = diag(.01, 6),
-                 direct_effect.precision = diag(.01, 3),
-                 parameter_matrix.rate = diag(c(15, 15, .5, .5, .5, .5)))
+                 X_to_intercept.precision = matrix(c(.01, 0, 0,
+                                                     0, .01, 0,
+                                                     0, 0, .01),
+                                                   nrow = 3),
+                 X_to_AR.precision = matrix(c(1, 0, 0,
+                                              0, 1, 0,
+                                              0, 0, 1),
+                                            nrow = 3),
+                 X_to_CR.precision = matrix(c(1, 0, 0,
+                                              0, 1, 0,
+                                              0, 0, 1),
+                                            nrow = 3),
+                 M_fixed_effect.precision = matrix(c(.1, 0, 0,
+                                                     0, .1, 0,
+                                                     0, 0, .1),
+                                                   nrow = 3),
+                 direct_effect.precision = matrix(c(.1, 0, 0,
+                                                    0, .1, 0,
+                                                    0, 0, .1),
+                                                  nrow = 3),
+                 parameter_matrix.rate = matrix(c(15, 0, 0, 0, 0, 0,
+                                                  0, 15, 0, 0, 0, 0,
+                                                  0, 0, .25, 0, 0, 0,
+                                                  0, 0, 0, .25, 0, 0,
+                                                  0, 0, 0, 0, .25, 0,
+                                                  0, 0, 0, 0, 0, .25),
+                                                nrow = 6))
 
 # ---- Compile and run the model ---
 jagsModel = jags.model(file = "jags_model.R", 
                        data = jags_data, 
-                       inits = inits_list, 
+                       # inits = inits_list, 
                        n.chains = n_chains, 
                        n.adapt = 4000)
 
-update(jagsModel, n.iter = 3000)
+update(jagsModel, n.iter = 6000)
 
 parameterlist = c("X_to_intercept",
                   "X_to_AR",
@@ -179,16 +200,16 @@ resulttable = zcalc(codaSamples[, ordered_parameters])
 
 # we're going to do this hard coded for now, just so we can submit this job before the end of day.
 true_values = c(treatment_effect_matrix[1:2, ],
-                # treatment_effect_matrix[3:4, ],
-                # treatment_effect_matrix[5:6, ],
-                parameter_matrix_covariance[1:2, 1:2],
+                treatment_effect_matrix[c(3,6), ],
+                # treatment_effect_matrix[4:5, ],
+                parameter_matrix_covariance[1:n_parameters, 1:n_parameters]^(-2),
                 mediator_effect_matrix[1:2, ],
-                # mediator_effect_matrix[c(3, 6), ],
+                mediator_effect_matrix[c(3, 6), ],
                 # mediator_effect_matrix[4:5, ],
                 direct_effect,
                 Y_covariance^(-2),
                 treatment_effect_matrix[1:2, ] * mediator_effect_matrix[1:2,],
-                # treatment_effect_matrix[3:4, ] * mediator_effect_matrix[c(3, 6), ],
+                treatment_effect_matrix[3:4, ] * mediator_effect_matrix[c(3, 6), ],
                 # treatment_effect_matrix[5:6, ] * mediator_effect_matrix[4:5, ],
                 m_covariance^(-2))
                 

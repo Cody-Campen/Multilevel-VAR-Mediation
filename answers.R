@@ -3,7 +3,7 @@ library(ggplot2)
 
 answers_list = list()
 times = c()
-for(this_seed in 1:200){
+for(this_seed in (1:200)){
   file_name = paste0("sim_", this_seed,".RData")
   load(file_name)
   answers_list = rbind(answers_list, answers)
@@ -23,9 +23,9 @@ column_means = colMeans(answers_matrix)
 
 # ---- Bias ----
 # This is not so good. 
-intercepts_NIE = answers_matrix[,c("indirect_effect[1,1,3]_raw_bias", 
-                            "X_fixed_effect[1,3]_raw_bias",
-                            "M_fixed_effect[1,1]_raw_bias")] |>
+intercepts_NIE = answers_matrix[,c("intercept_indirect_effect[1,1,3]_raw_bias", 
+                            "X_to_intercept[1,3]_raw_bias",
+                            "intercept_to_Y[1,1]_raw_bias")] |>
                   as.data.frame() |> 
                   gather(key = "variable", value = "value")
 
@@ -35,9 +35,9 @@ ggplot(intercepts_NIE, aes(value)) +
   ggtitle("Intercepts indirect effect raw bias")
 
 # This seem not quite as bad, but still not so good. 
-AR_NIE = answers_matrix[,c("indirect_effect[1,3,2]_raw_bias", 
-                           "X_fixed_effect[3,2]_raw_bias",
-                           "M_fixed_effect[1,3]_raw_bias")] |>
+AR_NIE = answers_matrix[,c("AR_indirect_effect[1,1,2]_raw_bias", 
+                           "X_to_AR[1,2]_raw_bias",
+                           "AR_to_Y[1,1]_raw_bias")] |>
   as.data.frame() |> 
   gather(key = "variable", value = "value")
 
@@ -47,9 +47,9 @@ ggplot(AR_NIE, aes(value)) +
   ggtitle("AR indirect effect raw bias")
 
 # This seems not so good. Coincidentally (or not), its the opposite effect as the intercepts. It is REALLY consistently wrong, which is better than being inconsistently wrong, I think. 
-CR_NIE = answers_matrix[,c("indirect_effect[1,6,3]_raw_bias", 
-                           "X_fixed_effect[6,3]_raw_bias",
-                           "M_fixed_effect[1,6]_raw_bias")] |>
+CR_NIE = answers_matrix[,c("CR_indirect_effect[1,2,3]_raw_bias", 
+                           "X_to_CR[2,3]_raw_bias",
+                           "CR_to_Y[1,2]_raw_bias")] |>
   as.data.frame() |> 
   gather(key = "variable", value = "value")
 
@@ -70,12 +70,12 @@ ggplot(DE, aes(value)) +
 # These make me want to check for mistakes in the data generation function. 
 
 # ---- Coverage ----
-coverage = column_means[c("X_fixed_effect[1,3]_coverage",
-                         "M_fixed_effect[1,1]_coverage",
-                         "X_fixed_effect[3,2]_coverage",
-                         "M_fixed_effect[1,3]_coverage",
-                         "X_fixed_effect[6,3]_coverage",
-                         "M_fixed_effect[1,6]_coverage",
+coverage = column_means[c("X_to_intercept[1,3]_coverage",
+                         "intercept_to_Y[1,1]_coverage",
+                         "X_to_AR[1,2]_coverage",
+                         "AR_to_Y[1,1]_coverage",
+                         "X_to_CR[2,3]_coverage",
+                         "CR_to_Y[1,2]_coverage",
                          "direct_effect[1,2]_coverage",
                          "direct_effect[1,3]_coverage")]
 
@@ -88,20 +88,20 @@ ggplot(coverage_df, aes(x = parameter, y = rate)) +
   ylim(0, 1) +
   ggtitle("Coverage Rates")
 
-CI_widths = column_means[c("X_fixed_effect[1,3]_CI_high",
-                           "M_fixed_effect[1,1]_CI_high",
-                           "X_fixed_effect[3,2]_CI_high",
-                           "M_fixed_effect[1,3]_CI_high",
-                           "X_fixed_effect[6,3]_CI_high",
-                           "M_fixed_effect[1,6]_CI_high",
+CI_widths = column_means[c("X_to_intercept[1,3]_CI_high",
+                           "intercept_to_Y[1,1]_CI_high",
+                           "X_to_AR[1,2]_CI_high",
+                           "AR_to_Y[1,1]_CI_high",
+                           "X_to_CR[2,3]_CI_high",
+                           "CR_to_Y[1,2]_CI_high",
                            "direct_effect[1,2]_CI_high",
                            "direct_effect[1,3]_CI_high")] -
-            column_means[c("X_fixed_effect[1,3]_CI_low",
-                           "M_fixed_effect[1,1]_CI_low",
-                           "X_fixed_effect[3,2]_CI_low",
-                           "M_fixed_effect[1,3]_CI_low",
-                           "X_fixed_effect[6,3]_CI_low",
-                           "M_fixed_effect[1,6]_CI_low",
+            column_means[c("X_to_intercept[1,3]_CI_low",
+                           "intercept_to_Y[1,1]_CI_low",
+                           "X_to_AR[1,2]_CI_low",
+                           "AR_to_Y[1,1]_CI_low",
+                           "X_to_CR[2,3]_CI_low",
+                           "CR_to_Y[1,2]_CI_low",
                            "direct_effect[1,2]_CI_low",
                            "direct_effect[1,3]_CI_low")]
 
