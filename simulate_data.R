@@ -110,12 +110,12 @@ simulate_data = function(n_people = 100,
     }
   }
   
-
+  set.seed(1)
   m_noise_covariance = diag(m_standard_deviations) %*% m_correlations %*% diag(m_standard_deviations)
-    
   m_process_noise_matrix = array(NA, dim = c(n_times, n_mediators, n_people))
-  m_process_noise_matrix[, ,] = mvrnorm(n = n_times*n_people, mu = rep(0, times = n_mediators), Sigma = m_noise_covariance)
-
+  for(this_person in 1:n_people){
+    m_process_noise_matrix[, , this_person] = mvrnorm(n = n_times, mu = rep(0, times = n_mediators), Sigma = m_noise_covariance)
+  }
   
   # Third, create a storage objects for the mediator time series...
   M = array(NA, dim = c(n_times, n_mediators, n_people)) # (timepoints x mediators x subjects)

@@ -55,9 +55,9 @@ model {
       parameter_matrix.hat[1:n_parameters, this_person] = c(M_intercept.hat[1:n_mediators, this_person],
                                                             M_AR.hat[1:n_mediators, this_person],
                                                             M_CR.hat[1:n_mediators, this_person])
-      
+
       parameter_matrix[1:n_parameters, this_person] ~ dmnorm(parameter_matrix.hat[1:n_parameters, this_person], parameter_matrix.precision[1:n_parameters, 1:n_parameters])
-      
+
       # Rename each parameter for easy tracking in the level-1 model.
       M_intercept[this_person, 1:n_mediators] = parameter_matrix[1:2, this_person]
       M_AR[this_person, 1:n_mediators] = parameter_matrix[3:4, this_person]
@@ -71,7 +71,7 @@ model {
       
       Y[this_person, 1:n_outcomes] ~ dnorm(Y.hat[1:n_outcomes, this_person], Y.precision)
   }
-  
+
   # ---- (1.2) level-1 likelihood functions ----
   for(this_person in 1:n_people){
     # Begin by setting the initial values for each mediator time series
@@ -92,12 +92,12 @@ model {
       }
     }
   
-    # ---- (1.2.1) Map the ARs and CRs from the level-2 parameter matrix onto the VAR transition matrix ----
-    for(this_mediator in 1:n_mediators){
-      M_transition_matrix[this_person, this_mediator, this_mediator] = M_AR[this_person, this_mediator]
-    }
-    M_transition_matrix[this_person, 2, 1] = M_CR[this_person, 1] # M1 -> M2
-    M_transition_matrix[this_person, 1, 2] = M_CR[this_person, 2] # M2 -> M1
+  # ---- (1.2.1) Map the ARs and CRs from the level-2 parameter matrix onto the VAR transition matrix ----
+  for(this_mediator in 1:n_mediators){
+    M_transition_matrix[this_person, this_mediator, this_mediator] = M_AR[this_person, this_mediator]
+  }
+  M_transition_matrix[this_person, 2, 1] = M_CR[this_person, 1] # M1 -> M2
+  M_transition_matrix[this_person, 1, 2] = M_CR[this_person, 2] # M2 -> M1
   }
   
   for(this_outcome in 1:n_outcomes){
@@ -115,22 +115,24 @@ model {
   # Here, we're wanting to get all of the parts necessary (process noise, correlations and covariance matrix) to build the final process noise precision matrix
   
   for(this_mediator in 1:n_mediators){
+    # We want to exponential the log process noise prior to get the variances of the process noise.
     process_noise[this_mediator] = exp(log_process_noise[this_mediator])
     M_covariance_matrix[this_mediator, this_mediator] = process_noise[this_mediator] * process_noise[this_mediator]
   }
   
   for(this_mediator in 1:(n_mediators-1)){
     for(other_mediator in (this_mediator+1):n_mediators){
+      # Then use the correlations and process noises to make the final covariance matrix.
       correlation_matrix[this_mediator, other_mediator] = tanh(fisher_z[this_mediator, other_mediator])
-      
+
       covariance_entry[this_mediator, other_mediator] = process_noise[this_mediator] * correlation_matrix[this_mediator, other_mediator] * process_noise[other_mediator]
       M_covariance_matrix[this_mediator, other_mediator] = covariance_entry[this_mediator, other_mediator]
       M_covariance_matrix[other_mediator, this_mediator] = covariance_entry[this_mediator, other_mediator]
     }
   }
   
-  M.precision = inverse(M_covariance_matrix[1:n_mediators, 1:n_mediators])
-
+  # and since JAGS uses precision instead of covariance, we have to invert it.
+  M.precision[1:n_mediators, 1:n_mediators] = inverse(M_covariance_matrix[1:n_mediators, 1:n_mediators])
 
   # ---- (2.1) level-2 likelihood priors ----
   
@@ -138,8 +140,8 @@ model {
   for(this_parameter in 1:n_mediators){
     for(this_treatment in 1:n_treatments){
       X_to_intercept[this_parameter, this_treatment] ~ dnorm(0, .01)
-      X_to_AR[this_parameter, this_treatment] ~ dnorm(0, 1)
-      X_to_CR[this_parameter, this_treatment] ~ dnorm(0, 1)
+      X_to_AR[this_parameter, this_treatment] ~ dnorm(0, 2)
+      X_to_CR[this_parameter, this_treatment] ~ dnorm(0, 2)
     }
   }
   
@@ -172,5 +174,4 @@ model {
       fisher_z[this_mediator, other_mediator] ~ dnorm(0, 1)
     }
   }
-  
 }

@@ -13,7 +13,7 @@ source("postcalc.R")
 source("simulate_data.R")
 source("create_inits.R")
 
-the_seed = the_seed
+the_seed = 1
 
 answers = NULL # this is the dataframe we will store the answers in
 
@@ -180,7 +180,9 @@ parameterlist = c("X_to_intercept",
                   "intercept_indirect_effect",
                   "AR_indirect_effect",
                   "CR_indirect_effect",
-                  "M.precision")
+                  "M.precision",
+                  "correlation_matrix",
+                  "process_noise")
 
 before_time = Sys.time()
 codaSamples = coda.samples(jagsModel, variable.names = parameterlist, n.iter = 10000, thin = 1) 
@@ -198,20 +200,19 @@ for(this_parameter in parameterlist){
 
 resulttable = zcalc(codaSamples[, ordered_parameters])
 
-# we're going to do this hard coded for now, just so we can submit this job before the end of day.
 true_values = c(treatment_effect_matrix[1:2, ],
                 treatment_effect_matrix[c(3,6), ],
                 treatment_effect_matrix[4:5, ],
-                parameter_matrix_covariance[1:n_parameters, 1:n_parameters]^(-2),
+                parameter_matrix_covariance[1:n_parameters, 1:n_parameters]^(-1),
                 mediator_effect_matrix[1:2, ],
                 mediator_effect_matrix[c(3, 6), ],
                 mediator_effect_matrix[4:5, ],
                 direct_effect,
-                Y_covariance^(-2),
+                Y_covariance^(-1),
                 treatment_effect_matrix[1:2, ] * mediator_effect_matrix[1:2,],
-                treatment_effect_matrix[3:4, ] * mediator_effect_matrix[c(3, 6), ],
-                treatment_effect_matrix[5:6, ] * mediator_effect_matrix[4:5, ],
-                m_covariance^(-2))
+                treatment_effect_matrix[c(3, 6), ] * mediator_effect_matrix[c(3, 6), ],
+                treatment_effect_matrix[4:5, ] * mediator_effect_matrix[4:5, ],
+                m_covariance^(-1))
                 
 raw_bias = resulttable$mean - true_values
 names(raw_bias) = paste(rownames(resulttable),"raw_bias", sep = "_")
