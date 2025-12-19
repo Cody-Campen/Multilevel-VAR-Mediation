@@ -41,8 +41,8 @@
 #' process_noise: The process noise of each mediator. Transformed from the log_process_noise through exponentiation. 
 #' fisher_z: The fisher-Z transformed correlation matrix for the mediators.
 #' correlation_matrix: The correlation matrix for the mediators. Transformed from fisher_z by taking the hyperbolic tangent.
-#' M_covariance_matrix: The covariance matrix for the mediators.
-#' M.precision: The precision matrix for the mediators. Transformed from M_covariance_matrix by taking the inverse.
+#' M.variance: The covariance matrix for the mediators.
+#' M.precision: The precision matrix for the mediators. Transformed from M.variance by taking the inverse.
 model {
   # ---- (1.1) level-2 likelihood functions ----
   for(this_person in 1:n_people){
@@ -71,7 +71,11 @@ model {
       
       Y[this_person, 1:n_outcomes] ~ dnorm(Y.hat[1:n_outcomes, this_person], Y.precision)
   }
-
+  
+  # for more interpretable results 
+  parameter_matrix.variance[1:n_parameters, 1:n_parameters] = inverse(parameter_matrix.precision[1:n_parameters, 1:n_parameters])
+  Y.variance = Y.precision^(-1)
+  
   # ---- (1.2) level-1 likelihood functions ----
   for(this_person in 1:n_people){
     # Begin by setting the initial values for each mediator time series
@@ -117,7 +121,7 @@ model {
   for(this_mediator in 1:n_mediators){
     # We want to exponential the log process noise prior to get the variances of the process noise.
     process_noise[this_mediator] = exp(log_process_noise[this_mediator])
-    M_covariance_matrix[this_mediator, this_mediator] = process_noise[this_mediator] * process_noise[this_mediator]
+    M.variance[this_mediator, this_mediator] = process_noise[this_mediator] * process_noise[this_mediator]
   }
   
   for(this_mediator in 1:(n_mediators-1)){
@@ -126,20 +130,20 @@ model {
       correlation_matrix[this_mediator, other_mediator] = tanh(fisher_z[this_mediator, other_mediator])
 
       covariance_entry[this_mediator, other_mediator] = process_noise[this_mediator] * correlation_matrix[this_mediator, other_mediator] * process_noise[other_mediator]
-      M_covariance_matrix[this_mediator, other_mediator] = covariance_entry[this_mediator, other_mediator]
-      M_covariance_matrix[other_mediator, this_mediator] = covariance_entry[this_mediator, other_mediator]
+      M.variance[this_mediator, other_mediator] = covariance_entry[this_mediator, other_mediator]
+      M.variance[other_mediator, this_mediator] = covariance_entry[this_mediator, other_mediator]
     }
   }
   
   # and since JAGS uses precision instead of covariance, we have to invert it.
-  M.precision[1:n_mediators, 1:n_mediators] = inverse(M_covariance_matrix[1:n_mediators, 1:n_mediators])
+  M.precision[1:n_mediators, 1:n_mediators] = inverse(M.variance[1:n_mediators, 1:n_mediators])
 
   # ---- (2.1) level-2 likelihood priors ----
   
   # For the fixed effect of the treatment on the VAR parameters...
   for(this_parameter in 1:n_mediators){
     for(this_treatment in 1:n_treatments){
-      X_to_intercept[this_parameter, this_treatment] ~ dnorm(0, .01)
+      X_to_intercept[this_parameter, this_treatment] ~ dnorm(0, .1)
       X_to_AR[this_parameter, this_treatment] ~ dnorm(0, 2)
       X_to_CR[this_parameter, this_treatment] ~ dnorm(0, 2)
     }
@@ -150,16 +154,16 @@ model {
   # ...and for the fixed effect of the treatment and parameters on the outcome.
   for(this_outcome in 1:n_outcomes){
     for(this_mediator in 1:n_mediators){
-      intercept_to_Y[this_outcome, this_mediator] ~ dnorm(0, .01) 
-      AR_to_Y[this_outcome, this_mediator] ~ dnorm(0, .01)
-      CR_to_Y[this_outcome, this_mediator] ~ dnorm(0, .01)
+      intercept_to_Y[this_outcome, this_mediator] ~ dnorm(0, .1) 
+      AR_to_Y[this_outcome, this_mediator] ~ dnorm(0, .05)
+      CR_to_Y[this_outcome, this_mediator] ~ dnorm(0, .05)
     }
     for(this_treatment in 1:n_treatments){
-      direct_effect[this_outcome, this_treatment] ~ dnorm(0, .01)
+      direct_effect[this_outcome, this_treatment] ~ dnorm(0, .1)
     }
   }
 
-  Y.precision ~ dgamma(10, 10) # for univariate outcomes
+  Y.precision ~ dgamma(15, 14) # for univariate outcomes
 
   # ---- (2.2) level-1 likelihood priors ----
 

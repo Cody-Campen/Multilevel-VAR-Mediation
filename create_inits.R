@@ -28,21 +28,38 @@
 create_inits = function(n_chains, 
                         n_treatments, 
                         n_mediators,
-                        n_outcomes){
+                        n_outcomes,
+                        the_seed){
   initial_values_list = NULL
   
   for(this_chain in 1:n_chains){
     # Sample the initial values for the parameters in the level-2 model...
     # ...for the regression model for M...
-    X_fixed_effect = matrix(runif((n_mediators * 3) * n_treatments, -1, 1),
-                           nrow = (n_mediators * 3),
-                           ncol = n_treatments)
+    X_to_intercept = matrix(runif(n_mediators * n_treatments, -2, 2),
+                            nrow = n_mediators,
+                            ncol = n_treatments)
+    
+    X_to_AR = matrix(runif(n_mediators * n_treatments, -1, 1),
+                            nrow = n_mediators,
+                            ncol = n_treatments)
+    
+    X_to_CR = matrix(runif(n_mediators * n_treatments, -1, 1),
+                            nrow = n_mediators,
+                            ncol = n_treatments)
     
     # ...and the regression model for Y.
-    M_fixed_effect = matrix(runif(n_outcomes * (n_mediators * 3), -2, 2),
+    intercept_to_Y = matrix(runif(n_outcomes * n_mediators, -2, 2),
                             nrow = n_outcomes,
-                            ncol = (n_mediators * 3))
-      
+                            ncol = n_mediators)
+    
+    AR_to_Y = matrix(runif(n_outcomes * n_mediators, -2, 2),
+                           nrow = n_outcomes,
+                           ncol = n_mediators)
+    
+    CR_to_Y = matrix(runif(n_outcomes * n_mediators, -2, 2),
+                           nrow = n_outcomes,
+                           ncol = n_mediators)
+    
     direct_effect = matrix(runif(n_outcomes * n_treatments, -2, 2),
                            nrow = n_outcomes,
                            ncol = n_treatments)
@@ -51,23 +68,22 @@ create_inits = function(n_chains,
     
     # Then, sample the initial value for the level-1 process noise variables.
     log_process_noise = runif(n_mediators, 0, 1)
-    
-    fisher_z = matrix(NA, nrow = n_mediators, ncol = n_mediators)
-    for(this_mediator in 1:(n_mediators-1)){
-      for(other_mediator in (this_mediator+1):n_mediators){
-        fisher_z[this_mediator, other_mediator] = runif(1, -2, 2)
-      }
-    }
+  
+    fisher_z = runif(1, -2, 2)
     
     # And finally, organize the samples in a list to pass onto the larger list of initial values
-    list_to_add = list(X_fixed_effect = X_fixed_effect,
-                       M_fixed_effect = M_fixed_effect,
+    list_to_add = list(X_to_intercept = X_to_intercept,
+                       X_to_AR = X_to_AR,
+                       X_to_CR = X_to_CR,
+                       intercept_to_Y = intercept_to_Y,
+                       AR_to_Y = AR_to_Y,
+                       CR_to_Y = CR_to_Y,
                        direct_effect = direct_effect,
                        Y.precision = Y.precision,
                        log_process_noise = log_process_noise,
-                       # fisher_z = fisher_z,
+                       fisher_z = fisher_z,
                        .RNG.name = "base::Mersenne-Twister",
-                       .RNG.seed = 1000*this_chain) 
+                       .RNG.seed = 1000 * this_chain + the_seed) 
 
         initial_values_list[[this_chain]] = list_to_add
   }

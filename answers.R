@@ -3,16 +3,12 @@ library(ggplot2)
 
 answers_list = list()
 times = c()
-for(this_seed in (1:200)[-56]){
+for(this_seed in (1:200)){
   file_name = paste0("sim_", this_seed,".RData")
   load(file_name)
   answers_list = rbind(answers_list, answers)
 }
-answers_matrix = matrix(unlist(answers_list), 
-                        nrow = attr(answers_list, "dim")[1], 
-                        ncol = attr(answers_list, "dim")[2],
-                        dimnames = attr(answers_list, "dimnames"))
-column_means = colMeans(answers_matrix)
+column_means = colMeans(answers_list)
 
 # These are the parameters we care about in our mediation:
 #   indirect_effect[1,1,3]
@@ -23,49 +19,49 @@ column_means = colMeans(answers_matrix)
 
 # ---- Bias ----
 # This is not so good. 
-intercepts_NIE = answers_matrix[,c("intercept_indirect_effect[1,1,3]_raw_bias", 
-                            "X_to_intercept[1,3]_raw_bias",
-                            "intercept_to_Y[1,1]_raw_bias")] |>
+intercepts_NIE = answers_list[,c("intercept_indirect_effect[1,1,3]_relative_bias", 
+                            "X_to_intercept[1,3]_relative_bias",
+                            "intercept_to_Y[1,1]_relative_bias")] |>
                   as.data.frame() |> 
                   gather(key = "variable", value = "value")
 
 ggplot(intercepts_NIE, aes(value)) + 
   geom_histogram() +
   facet_wrap(~variable) +
-  ggtitle("Intercepts indirect effect raw bias")
+  ggtitle("Intercepts indirect effect relative bias")
 
 # This seem not quite as bad, but still not so good. 
-AR_NIE = answers_matrix[,c("AR_indirect_effect[1,1,2]_raw_bias", 
-                           "X_to_AR[1,2]_raw_bias",
-                           "AR_to_Y[1,1]_raw_bias")] |>
+AR_NIE = answers_list[,c("AR_indirect_effect[1,1,2]_relative_bias", 
+                           "X_to_AR[1,2]_relative_bias",
+                           "AR_to_Y[1,1]_relative_bias")] |>
   as.data.frame() |> 
   gather(key = "variable", value = "value")
 
 ggplot(AR_NIE, aes(value)) + 
   geom_histogram() +
   facet_wrap(~variable) +
-  ggtitle("AR indirect effect raw bias")
+  ggtitle("AR indirect effect relative bias")
 
-CR_NIE = answers_matrix[,c("CR_indirect_effect[1,2,3]_raw_bias", 
-                           "X_to_CR[2,3]_raw_bias",
-                           "CR_to_Y[1,2]_raw_bias")] |>
+CR_NIE = answers_list[,c("CR_indirect_effect[1,2,3]_relative_bias", 
+                           "X_to_CR[2,3]_relative_bias",
+                           "CR_to_Y[1,2]_relative_bias")] |>
   as.data.frame() |> 
   gather(key = "variable", value = "value")
 
 ggplot(CR_NIE, aes(value)) + 
   geom_histogram() +
   facet_wrap(~variable) +
-  ggtitle("CR indirect effect raw bias")
+  ggtitle("CR indirect effect relative bias")
 
-DE = answers_matrix[,c("direct_effect[1,2]_raw_bias",
-                       "direct_effect[1,3]_raw_bias")] |>
+DE = answers_list[,c("direct_effect[1,2]_relative_bias",
+                       "direct_effect[1,3]_relative_bias")] |>
   as.data.frame() |> 
   gather(key = "variable", value = "value")
 
 ggplot(DE, aes(value)) + 
   geom_histogram() +
   facet_wrap(~variable) +
-  ggtitle("Direct effects raw bias")
+  ggtitle("Direct effects relative bias")
 
 # ---- Coverage ----
 coverage = column_means[c("X_to_intercept[1,3]_coverage",
@@ -103,7 +99,7 @@ CI_widths = column_means[c("X_to_intercept[1,3]_CI_high",
                            "direct_effect[1,2]_CI_low",
                            "direct_effect[1,3]_CI_low")]
 
-ESS = answers_matrix[, c("X_to_intercepts[1,3]_ess",
+ESS = answers_list[, c("X_to_intercepts[1,3]_ess",
                         "M_fixed_effect[1,1]_ess",
                         "X_to_ARs[1,2]_ess",
                         "M_fixed_effect[1,3]_ess",
