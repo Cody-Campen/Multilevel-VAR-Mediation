@@ -29,7 +29,7 @@ treatment_effect_matrix = matrix(c(0, 0, 1,   # X -> M_1 intercept
                                    0, 0, 0,   # X -> M_2 intercept
                                    0, .2, 0,   # X -> M_1 autoregression
                                    0, 0, 0,   # X -> M_1 to M_2 crossregression
-                                   0, 0, .2,   # X -> M_2 to M_1 crossregression
+                                   0, 0, -.2,   # X -> M_2 to M_1 crossregression
                                    0, 0, 0),  # X -> M_2 autoregression
                                  nrow = 6, ncol = n_treatments+1, byrow = T)
 mediator_effect_matrix = matrix(c(.8,   # M_1 intercept -> Y

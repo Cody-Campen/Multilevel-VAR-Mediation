@@ -99,13 +99,13 @@ CI_widths = column_means[c("X_to_intercept[1,3]_CI_high",
                            "direct_effect[1,2]_CI_low",
                            "direct_effect[1,3]_CI_low")]
 
-ESS = answers_list[, c("X_to_intercepts[1,3]_ess",
-                        "M_fixed_effect[1,1]_ess",
-                        "X_to_ARs[1,2]_ess",
-                        "M_fixed_effect[1,3]_ess",
-                        "X_to_CRs[2,3]_ess",
-                        "M_fixed_effect[1,6]_ess",
-                        "direct_effect[1,2]_ess",
-                        "direct_effect[1,3]_ess")] |>
+ESS = answers_list[, c("X_to_intercept[1,3]_ess",
+                       "intercept_to_Y[1,1]_ess",
+                       "X_to_AR[1,2]_ess",
+                       "AR_to_Y[1,1]_ess",
+                       "X_to_CR[2,3]_ess",
+                       "CR_to_Y[1,2]_ess",
+                       "direct_effect[1,2]_ess",
+                       "direct_effect[1,3]_ess")] |>
   as.data.frame()
 plot(ESS)

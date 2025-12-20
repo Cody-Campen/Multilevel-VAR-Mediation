@@ -47,6 +47,8 @@ create_inits = function(n_chains,
                             nrow = n_mediators,
                             ncol = n_treatments)
     
+    parameter_matrix.precision = diag(c(runif(n_mediators, 0, .4), runif(n_mediators * 2, 8, 12)))
+    
     # ...and the regression model for Y.
     intercept_to_Y = matrix(runif(n_outcomes * n_mediators, -2, 2),
                             nrow = n_outcomes,
@@ -79,6 +81,7 @@ create_inits = function(n_chains,
                        AR_to_Y = AR_to_Y,
                        CR_to_Y = CR_to_Y,
                        direct_effect = direct_effect,
+                       parameter_matrix.precision = parameter_matrix.precision,
                        Y.precision = Y.precision,
                        log_process_noise = log_process_noise,
                        fisher_z = fisher_z,
