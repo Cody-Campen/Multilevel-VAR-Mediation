@@ -48,25 +48,25 @@ model {
   for(this_person in 1:n_people){
       # First we start out for the likelihood for the person-specific VAR parameters as a function of their treatment, X.
       M_intercept.hat[1:n_mediators, this_person] = X_to_intercept[1:n_mediators, 1:n_treatments] %*% X[this_person, 1:n_treatments]
-      M_AR.hat[1:n_mediators, this_person] = X_to_AR[1:n_mediators, 1:n_treatments] %*% X[this_person, 1:n_treatments]
       M_CR.hat[1:n_mediators, this_person] = X_to_CR[1:n_mediators, 1:n_treatments] %*% X[this_person, 1:n_treatments]
- 
+      fisher_z.hat[this_person] = X_to_Z[1, 1:n_treatments] %*% X[this_person, 1:n_treatments]
+      
       # Then sample from the vector of all parameters so that we can have covariances between intercepts, ARs and CRs
       parameter_matrix.hat[1:n_parameters, this_person] = c(M_intercept.hat[1:n_mediators, this_person],
-                                                            M_AR.hat[1:n_mediators, this_person],
-                                                            M_CR.hat[1:n_mediators, this_person])
+                                                            M_CR.hat[1:n_mediators, this_person],
+                                                            fisher_z.hat[this_person])
 
       parameter_matrix[1:n_parameters, this_person] ~ dmnorm(parameter_matrix.hat[1:n_parameters, this_person], parameter_matrix.precision[1:n_parameters, 1:n_parameters])
 
       # Rename each parameter for easy tracking in the level-1 model.
       M_intercept[this_person, 1:n_mediators] = parameter_matrix[1:2, this_person]
-      M_AR[this_person, 1:n_mediators] = parameter_matrix[3:4, this_person]
-      M_CR[this_person, 1:n_mediators] = parameter_matrix[5:6, this_person]
-
+      M_CR[this_person, 1:n_mediators] = parameter_matrix[3:4, this_person]
+      fisher_z[this_person, 1] = parameter_matrix[5, this_person]
+      
       # Now we can get the likelihood for the outcome as a function of the person-specific VAR parameters
       Y.hat[1, this_person] = intercept_to_Y[1:n_outcomes, 1:n_mediators] %*% M_intercept[this_person, 1:n_mediators] + 
-                              AR_to_Y[1:n_outcomes, 1:n_mediators] %*% M_AR[this_person, 1:n_mediators] +
                               CR_to_Y[1:n_outcomes, 1:n_mediators] %*% M_CR[this_person, 1:n_mediators] +
+                              Z_to_Y[1:n_outcomes, 1] %*% fisher_z[this_person, 1] +
                               direct_effect[1:n_outcomes, 1:n_treatments] %*% X[this_person, 1:n_treatments]
       
       Y[this_person, 1:n_outcomes] ~ dnorm(Y.hat[1:n_outcomes, this_person], Y.precision)
@@ -78,15 +78,18 @@ model {
   
   # ---- (1.2) level-1 likelihood functions ----
   for(this_person in 1:n_people){
+    
     # Begin by setting the initial values for each mediator time series
-    M[this_person, 1, 1:n_mediators] ~ dmnorm(M_intercept[this_person, 1:n_mediators], M.precision[1:n_mediators, 1:n_mediators])
+    M[this_person, 1, 1:n_mediators] ~ dmnorm(M_intercept[this_person, 1:n_mediators], M.precision[this_person, 1:n_mediators, 1:n_mediators])
 
     # then define the likelihood for the rest of the time series for the non-missing values...
     for(this_time in times_seen[this_person, 1:n_seen[this_person]]){
       M.hat[this_person, this_time, 1:n_mediators] = M_intercept[this_person, 1:n_mediators] + M_transition_matrix[this_person, 1:n_mediators, 1:n_mediators] %*% (M[this_person, this_time-1, 1:n_mediators] - M_intercept[this_person, 1:n_mediators])
-      M[this_person, this_time, 1:n_mediators] ~ dmnorm(M.hat[this_person, this_time, 1:n_mediators], M.precision[1:n_mediators, 1:n_mediators])
+      M[this_person, this_time, 1:n_mediators] ~ dmnorm(M.hat[this_person, this_time, 1:n_mediators], M.precision[this_person, 1:n_mediators, 1:n_mediators])
     }
-
+  }
+  
+  for(this_person in people_with_missing){
     # ...and for the missing values.
     for(this_time in times_missed[this_person, 1:n_miss[this_person]]){
       M.hat[this_person, this_time, 1:n_mediators] = M_intercept[this_person, 1:n_mediators] + M_transition_matrix[this_person, 1:n_mediators, 1:n_mediators] %*% (M[this_person, this_time-1, 1:n_mediators] - M_intercept[this_person, 1:n_mediators])
@@ -95,87 +98,84 @@ model {
         M[this_person, this_time, this_mediator] ~ dnorm(M.hat[this_person, this_time, this_mediator], process_noise[this_mediator]^(-2))
       }
     }
-  
-  # ---- (1.2.1) Map the ARs and CRs from the level-2 parameter matrix onto the VAR transition matrix ----
-  for(this_mediator in 1:n_mediators){
-    M_transition_matrix[this_person, this_mediator, this_mediator] = M_AR[this_person, this_mediator]
   }
-  M_transition_matrix[this_person, 2, 1] = M_CR[this_person, 1] # M1 -> M2
-  M_transition_matrix[this_person, 1, 2] = M_CR[this_person, 2] # M2 -> M1
+  
+  for(this_person in 1:n_people){
+    # ---- (1.2.1) Map the ARs and CRs from the level-2 parameter matrix onto the VAR transition matrix ----
+    for(this_mediator in 1:n_mediators){
+      M_transition_matrix[this_person, this_mediator, this_mediator] = M_AR[this_mediator]
+    }
+    M_transition_matrix[this_person, 2, 1] = M_CR[this_person, 1] # M1 -> M2
+    M_transition_matrix[this_person, 1, 2] = M_CR[this_person, 2] # M2 -> M1
+    
+    for(this_mediator in 1:n_mediators){
+      M.variance[this_person, this_mediator, this_mediator] = process_noise[this_mediator] * process_noise[this_mediator]
+    }
+    
+    for(this_mediator in 1:(n_mediators-1)){
+      for(other_mediator in (this_mediator+1):n_mediators){
+        # Then use the correlations and process noises to make the final covariance matrix.
+        correlation_matrix[this_person, this_mediator, other_mediator] = tanh(fisher_z[this_person, 1])
+        
+        covariance_entry[this_person, this_mediator, other_mediator] = process_noise[this_mediator] * correlation_matrix[this_person, this_mediator, other_mediator] * process_noise[other_mediator]
+        M.variance[this_person, this_mediator, other_mediator] = covariance_entry[this_person, this_mediator, other_mediator]
+        M.variance[this_person, other_mediator, this_mediator] = covariance_entry[this_person, this_mediator, other_mediator]
+      }
+    }
+    # and since JAGS uses precision instead of covariance, we have to invert it.
+    M.precision[this_person, 1:n_mediators, 1:n_mediators] = inverse(M.variance[this_person, 1:n_mediators, 1:n_mediators])
   }
   
   for(this_outcome in 1:n_outcomes){
-    for(this_parameter in 1:n_mediators){
-      for(this_treatment in 1:n_treatments){
+    for(this_treatment in 1:n_treatments){
+      for(this_parameter in 1:n_mediators){
         intercept_indirect_effect[this_outcome, this_parameter, this_treatment] = X_to_intercept[this_parameter, this_treatment] * intercept_to_Y[this_outcome, this_parameter]
-        AR_indirect_effect[this_outcome, this_parameter, this_treatment] = X_to_AR[this_parameter, this_treatment] * AR_to_Y[this_outcome, this_parameter]
         CR_indirect_effect[this_outcome, this_parameter, this_treatment] = X_to_CR[this_parameter, this_treatment] * CR_to_Y[this_outcome, this_parameter]
       }
+    Z_indirect_effect[this_outcome, this_treatment] = X_to_Z[1, this_treatment] * Z_to_Y[this_outcome, 1] 
     }
   }
   
-  # ---- (1.2.2) Define the person-invariance M precision matrix ----
-  
-  # Here, we're wanting to get all of the parts necessary (process noise, correlations and covariance matrix) to build the final process noise precision matrix
-  
+  # ---- (1.2.2) Define the person-invariant M process noise ----
   for(this_mediator in 1:n_mediators){
-    # We want to exponential the log process noise prior to get the variances of the process noise.
     process_noise[this_mediator] = exp(log_process_noise[this_mediator])
-    M.variance[this_mediator, this_mediator] = process_noise[this_mediator] * process_noise[this_mediator]
   }
   
-  for(this_mediator in 1:(n_mediators-1)){
-    for(other_mediator in (this_mediator+1):n_mediators){
-      # Then use the correlations and process noises to make the final covariance matrix.
-      correlation_matrix[this_mediator, other_mediator] = tanh(fisher_z[this_mediator, other_mediator])
-
-      covariance_entry[this_mediator, other_mediator] = process_noise[this_mediator] * correlation_matrix[this_mediator, other_mediator] * process_noise[other_mediator]
-      M.variance[this_mediator, other_mediator] = covariance_entry[this_mediator, other_mediator]
-      M.variance[other_mediator, this_mediator] = covariance_entry[this_mediator, other_mediator]
-    }
-  }
-  
-  # and since JAGS uses precision instead of covariance, we have to invert it.
-  M.precision[1:n_mediators, 1:n_mediators] = inverse(M.variance[1:n_mediators, 1:n_mediators])
 
   # ---- (2.1) level-2 likelihood priors ----
   
   # For the fixed effect of the treatment on the VAR parameters...
-  for(this_parameter in 1:n_mediators){
-    for(this_treatment in 1:n_treatments){
-      X_to_intercept[this_parameter, this_treatment] ~ dnorm(0, .1)
-      X_to_AR[this_parameter, this_treatment] ~ dnorm(0, 2)
-      X_to_CR[this_parameter, this_treatment] ~ dnorm(0, 2)
+  for(this_treatment in 1:n_treatments){
+    for(this_parameter in 1:n_mediators){
+      X_to_intercept[this_parameter, this_treatment] ~ dnorm(0, .01)
+      X_to_CR[this_parameter, this_treatment] ~ dnorm(0, .01)
     }
+    X_to_Z[1, this_treatment] ~ dnorm(0, .01)
   }
   
-  parameter_matrix.precision ~ dwish(parameter_matrix.rate[1:n_parameters, 1:n_parameters], 6)
+  parameter_matrix.precision ~ dwish(parameter_matrix.rate[1:n_parameters, 1:n_parameters], 7)
   
   # ...and for the fixed effect of the treatment and parameters on the outcome.
   for(this_outcome in 1:n_outcomes){
     for(this_mediator in 1:n_mediators){
-      intercept_to_Y[this_outcome, this_mediator] ~ dnorm(0, .1) 
-      AR_to_Y[this_outcome, this_mediator] ~ dnorm(0, .05)
-      CR_to_Y[this_outcome, this_mediator] ~ dnorm(0, .05)
+      intercept_to_Y[this_outcome, this_mediator] ~ dnorm(0, .01) 
+      CR_to_Y[this_outcome, this_mediator] ~ dnorm(0, .01)
     }
+    Z_to_Y[this_outcome, 1] ~ dnorm(0, .01)
     for(this_treatment in 1:n_treatments){
-      direct_effect[this_outcome, this_treatment] ~ dnorm(0, .1)
+      direct_effect[this_outcome, this_treatment] ~ dnorm(0, .01)
     }
   }
-
+  
   Y.precision ~ dgamma(15, 14) # for univariate outcomes
 
   # ---- (2.2) level-1 likelihood priors ----
-
+  for(this_mediator in 1:n_mediators){
+    M_AR[this_mediator] ~ dnorm(0, 1) T(-1.2, 1.2)
+  }
+  
   # the log of the person-invariant process noise
   for(this_mediator in 1:n_mediators){
     log_process_noise[this_mediator] ~ dnorm(0, 1)
-  }
-  
-  # the fisher z transformed correlations
-  for(this_mediator in 1:(n_mediators-1)){
-    for(other_mediator in (this_mediator+1):n_mediators){
-      fisher_z[this_mediator, other_mediator] ~ dnorm(0, 1)
-    }
   }
 }

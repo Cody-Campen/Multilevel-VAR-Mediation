@@ -43,11 +43,7 @@ create_inits = function(n_chains,
                             nrow = n_mediators,
                             ncol = n_treatments)
     
-    X_to_CR = matrix(runif(n_mediators * n_treatments, -1, 1),
-                            nrow = n_mediators,
-                            ncol = n_treatments)
-    
-    parameter_matrix.precision = diag(c(runif(n_mediators, 0, .4), runif(n_mediators * 2, 8, 12)))
+    parameter_matrix.precision = diag(c(runif(n_mediators, 0, .4), runif(n_mediators, 8, 12)))
     
     # ...and the regression model for Y.
     intercept_to_Y = matrix(runif(n_outcomes * n_mediators, -2, 2),
@@ -55,10 +51,6 @@ create_inits = function(n_chains,
                             ncol = n_mediators)
     
     AR_to_Y = matrix(runif(n_outcomes * n_mediators, -2, 2),
-                           nrow = n_outcomes,
-                           ncol = n_mediators)
-    
-    CR_to_Y = matrix(runif(n_outcomes * n_mediators, -2, 2),
                            nrow = n_outcomes,
                            ncol = n_mediators)
     
@@ -76,10 +68,8 @@ create_inits = function(n_chains,
     # And finally, organize the samples in a list to pass onto the larger list of initial values
     list_to_add = list(X_to_intercept = X_to_intercept,
                        X_to_AR = X_to_AR,
-                       X_to_CR = X_to_CR,
                        intercept_to_Y = intercept_to_Y,
                        AR_to_Y = AR_to_Y,
-                       CR_to_Y = CR_to_Y,
                        direct_effect = direct_effect,
                        parameter_matrix.precision = parameter_matrix.precision,
                        Y.precision = Y.precision,
